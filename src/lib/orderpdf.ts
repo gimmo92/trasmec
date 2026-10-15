@@ -14,8 +14,59 @@ export interface ParsedOrder {
   rawText: string;
 }
 
+/** Node su Vercel non ha DOMMatrix: pdfjs lo usa anche solo per estrarre il testo. */
+function installDomMatrix() {
+  const g = globalThis as typeof globalThis & { DOMMatrix?: unknown };
+  if (typeof g.DOMMatrix !== "undefined") return;
+  class DOMMatrixPolyfill {
+    a = 1;
+    b = 0;
+    c = 0;
+    d = 1;
+    e = 0;
+    f = 0;
+    is2D = true;
+    constructor(init?: number[] | string) {
+      if (Array.isArray(init) && init.length >= 6) {
+        this.a = init[0];
+        this.b = init[1];
+        this.c = init[2];
+        this.d = init[3];
+        this.e = init[4];
+        this.f = init[5];
+      }
+    }
+    scaleSelf() {
+      return this;
+    }
+    translateSelf() {
+      return this;
+    }
+    multiplySelf() {
+      return this;
+    }
+    preMultiplySelf() {
+      return this;
+    }
+    invertSelf() {
+      return this;
+    }
+    inverse() {
+      return new DOMMatrixPolyfill();
+    }
+    translate() {
+      return new DOMMatrixPolyfill();
+    }
+    scale() {
+      return new DOMMatrixPolyfill();
+    }
+  }
+  g.DOMMatrix = DOMMatrixPolyfill;
+}
+
 /** Estrae il testo dal PDF usando pdf-parse (v2). */
 async function extractPdfText(filePath: string): Promise<string> {
+  installDomMatrix();
   const buf = fs.readFileSync(filePath);
   const mod = await import("pdf-parse");
   const PDFParse = mod.PDFParse;
