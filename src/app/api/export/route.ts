@@ -240,6 +240,11 @@ export async function POST(req: NextRequest) {
           : l.recommendedQty;
       sug.fill = solid(STORAGE_DATA);
       sug.alignment = { horizontal: "center", vertical: "middle" };
+      if (/^(m|mt|mm)$/i.test(um)) {
+        const fmt = `General" ${um.toUpperCase()}"`;
+        row.getCell(17).numFmt = fmt;
+        sug.numFmt = fmt;
+      }
       // V €/TOTAL = (T-(T*U))*S
       row.getCell(22).value = { formula: `=(T${r}-(T${r}*U${r}))*S${r}` };
       row.getCell(22).alignment = { horizontal: "center", vertical: "middle" };

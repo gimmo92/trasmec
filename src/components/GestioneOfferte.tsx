@@ -22,6 +22,11 @@ function formatSize(bytes: number): string {
 
 type LineKind = "spares" | "motors" | "sensors";
 
+function withUnit(qty: number | null | undefined, um?: string): string {
+  if (qty === null || qty === undefined) return "";
+  return /^(m|mt|mm)$/i.test(um ?? "") ? `${qty} ${um!.toUpperCase()}` : String(qty);
+}
+
 function LinesTable({
   lines,
   onRemove,
@@ -64,8 +69,8 @@ function LinesTable({
               {l.descriptionIT || l.descriptionEN || ""}
               {l.atex ? <span className="tag">{l.atex}</span> : null}
             </td>
-            <td className="num">{l.installedQty}</td>
-            <td className="num">{l.recommendedQty ?? ""}</td>
+            <td className="num">{withUnit(l.installedQty, l.um)}</td>
+            <td className="num">{withUnit(l.recommendedQty, l.um)}</td>
             <td className="num">{l.um || "NR"}</td>
             <td className="row-del">
               <button
