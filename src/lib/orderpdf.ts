@@ -68,6 +68,9 @@ function installDomMatrix() {
 async function extractPdfText(filePath: string): Promise<string> {
   installDomMatrix();
   const buf = fs.readFileSync(filePath);
+  // Carica il worker nello stesso processo. Su Vercel il fake worker di pdfjs
+  // cerca pdf.worker.mjs accanto a pdf.mjs e quel file non c'è nel bundle.
+  await import("pdfjs-dist/legacy/build/pdf.worker.mjs" as string);
   const mod = await import("pdf-parse");
   const PDFParse = mod.PDFParse;
   const parser = new PDFParse({ data: new Uint8Array(buf) });
