@@ -10,6 +10,10 @@ interface Health {
   documentiDir: string;
 }
 
+interface ArchivioDistinta extends DocumentoFile {
+  ordini: string[];
+}
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -115,6 +119,8 @@ function MachineBlock({
 export default function GestioneOfferte({ active = true }: { active?: boolean }) {
   const [health, setHealth] = useState<Health | null>(null);
   const [docs, setDocs] = useState<DocumentoFile[]>([]);
+  const [distinteAll, setDistinteAll] = useState<ArchivioDistinta[]>([]);
+  const [orderPath, setOrderPath] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loadingDocs, setLoadingDocs] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -123,10 +129,15 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
   const [exporting, setExporting] = useState(false);
 
   const reloadDocs = useCallback(async () => {
-    const res = await fetch("/api/documenti");
+    const res = await fetch("/api/archivio");
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(String(data.error || "Errore documenti"));
-    setDocs(data.files ?? []);
+    const orders = (data.ordini ?? []) as DocumentoFile[];
+    const boms = (data.distinte ?? []) as ArchivioDistinta[];
+    const rest = (data.altri ?? []) as DocumentoFile[];
+    setDocs([...orders, ...rest]);
+    setDistinteAll(boms);
+    setOrderPath((current) => (orders.some((order) => order.path === current) ? current : ""));
   }, []);
 
   useEffect(() => {
@@ -144,7 +155,10 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
   }, [active, reloadDocs]);
 
   const ordini = useMemo(() => docs.filter((d) => d.kind === "ordine"), [docs]);
-  const distinte = useMemo(() => docs.filter((d) => d.kind === "distinta"), [docs]);
+  const distinte = useMemo(
+    () => (orderPath ? distinteAll.filter((d) => d.ordini.includes(orderPath)) : []),
+    [distinteAll, orderPath]
+  );
   const altri = useMemo(
     () => docs.filter((d) => d.kind !== "ordine" && d.kind !== "distinta"),
     [docs]
@@ -159,7 +173,17 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
     });
   }, []);
 
+  const chooseOrder = useCallback((path: string) => {
+    setOrderPath(path);
+    setSelected(new Set());
+    setOffer(null);
+  }, []);
+
   const generate = useCallback(async () => {
+    if (!orderPath) {
+      setError("Seleziona un ordine prima di generare l'offerta.");
+      return;
+    }
     setGenerating(true);
     setError(null);
     setOffer(null);
@@ -167,7 +191,7 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paths: Array.from(selected) }),
+        body: JSON.stringify({ orderPath, paths: Array.from(selected) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Errore");
@@ -177,7 +201,7 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
     } finally {
       setGenerating(false);
     }
-  }, [selected]);
+  }, [orderPath, selected]);
 
   const removeLine = useCallback(
     (itemCode: string, kind: LineKind, index: number) => {
@@ -231,8 +255,8 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
         </div>
 
         <div className="hint">
-          Le distinte si possono limitare con la spunta. Senza spunta l&apos;offerta usa
-          tutti gli item dell&apos;ordine dopo AFTER SALES.
+          Seleziona un ordine. Senza spunte sulle distinte, l&apos;offerta usa tutte
+          quelle associate a quell&apos;ordine.
         </div>
         <div className="doc-list">
           {loadingDocs && <div className="status">Caricamento…</div>}
@@ -242,7 +266,12 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
             <div className="hint">Nessun ordine riconosciuto.</div>
           )}
           {ordini.map((d) => (
-            <div key={d.path} className="doc static">
+            <div
+              key={d.path}
+              className={`doc ${orderPath === d.path ? "selected" : ""}`}
+              onClick={() => chooseOrder(d.path)}
+            >
+              <input type="radio" name="ordine" checked={orderPath === d.path} readOnly />
               <div className="meta">
                 <div className="name">{d.name}</div>
                 <div className="sub">{formatSize(d.sizeBytes)}</div>
@@ -252,6 +281,12 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
           ))}
 
           <div className="section-title">Distinte base ({distinte.length})</div>
+          {!orderPath && !loadingDocs && (
+            <div className="hint">Seleziona un ordine per vedere le distinte.</div>
+          )}
+          {orderPath && distinte.length === 0 && !loadingDocs && (
+            <div className="hint">Nessuna distinta associata a questo ordine.</div>
+          )}
           {distinte.map((d) => (
             <div
               key={d.path}
@@ -290,13 +325,15 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
           <button
             className="primary"
             style={{ flex: 1 }}
-            disabled={generating}
+            disabled={generating || !orderPath}
             onClick={generate}
           >
             {generating ? (
               <>
                 <span className="spinner" /> Generazione…
               </>
+            ) : !orderPath ? (
+              "Seleziona un ordine"
             ) : selected.size > 0 ? (
               `Genera offerta (${selected.size})`
             ) : (
@@ -355,9 +392,9 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
 
         {!offer && !error && (
           <div className="empty">
-            Premi <strong>Genera offerta</strong>: leggo il documento
-            d&apos;ordine, prendo gli item dopo <em>AFTER SALES</em>, estraggo i
-            ricambi delle distinte e aggiungo motori e sensori.
+            Seleziona un ordine, poi premi <strong>Genera offerta</strong>:
+            leggo quel documento, prendo gli item dopo <em>AFTER SALES</em> e
+            uso le distinte associate.
           </div>
         )}
 

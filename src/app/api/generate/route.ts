@@ -6,21 +6,23 @@ export const maxDuration = 120;
 
 /**
  * POST /api/generate
- * body: { paths?: string[] }  (opzionale: limita alle distinte selezionate)
+ * body: { orderPath: string, paths?: string[] }
  * Legge il documento d'ordine, individua gli item dopo AFTER SALES, estrae i
  * ricambi delle relative distinte e aggiunge motori/sensori.
  */
 export async function POST(req: NextRequest) {
   try {
     let paths: string[] = [];
+    let orderPath = "";
     try {
       const body = await req.json();
       if (Array.isArray(body?.paths)) paths = body.paths;
+      if (typeof body?.orderPath === "string") orderPath = body.orderPath;
     } catch {
-      /* body opzionale */
+      /* body letto sotto */
     }
 
-    const offer = await buildSparePartsOffer({ restrictPaths: paths });
+    const offer = await buildSparePartsOffer({ orderPath, restrictPaths: paths });
     return NextResponse.json({ offer });
   } catch (err) {
     return NextResponse.json(

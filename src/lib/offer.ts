@@ -14,8 +14,11 @@ import {
 } from "./sparecatalog";
 import { refineOfferWithClaude } from "./claudeoffer";
 import { prepareApp } from "./prepare";
+import { readArchivio } from "./archivio";
 
 export interface BuildOfferOptions {
+  /** File dell'ordine da cui generare. Obbligatorio. */
+  orderPath?: string;
   restrictPaths?: string[];
 }
 
@@ -460,11 +463,10 @@ export async function buildSparePartsOffer(
 ): Promise<Offer> {
   await prepareApp();
   const docs = await listDocumentiClassificati();
-  const pdfDoc =
-    docs
-      .filter((d) => d.kind === "ordine")
-      .sort((a, b) => b.modified.localeCompare(a.modified))[0] ??
-    docs.find((d) => d.ext === ".pdf" && d.kind !== "template");
+  if (!opts.orderPath) {
+    throw new Error("Seleziona un ordine prima di generare l'offerta.");
+  }
+  const pdfDoc = docs.find((d) => d.kind === "ordine" && (d.path === opts.orderPath || d.name === opts.orderPath));
   const mlDoc =
     docs.find((d) => d.kind === "lista-motori") ??
     docs.find((d) => /-ML\.xlsx$/i.test(d.name));
@@ -476,7 +478,22 @@ export async function buildSparePartsOffer(
     docs.find((d) => /spare\s*parts?\s*list/i.test(d.name));
 
   if (!pdfDoc) {
-    throw new Error("Documento d'ordine PDF non trovato nella cartella documenti.");
+    throw new Error("Ordine non trovato. Selezionalo di nuovo dall'elenco.");
+  }
+
+  const archivio = await readArchivio();
+  const linked = archivio.distinte.filter((d) => d.ordini.includes(pdfDoc.name));
+  const codeOf = (fileName: string): string | undefined => {
+    const row = linked.find((d) => d.name === fileName || d.path === fileName);
+    return row?.code || fileName.match(/BE\d{4}/i)?.[0]?.toUpperCase();
+  };
+  const allowed = new Set(
+    (opts.restrictPaths && opts.restrictPaths.length > 0 ? opts.restrictPaths : linked.map((d) => d.name))
+      .map((name) => codeOf(name))
+      .filter((code): code is string => Boolean(code))
+  );
+  if (allowed.size === 0) {
+    throw new Error("Nessuna distinta associata a questo ordine.");
   }
 
   const indices = listIndici().filter((r) => r.indice.trim());
@@ -506,20 +523,12 @@ export async function buildSparePartsOffer(
     : new Map();
 
   const bomFiles = mapBomFiles(docs);
-  let restrictBases: Set<string> | undefined;
-  if (opts.restrictPaths && opts.restrictPaths.length > 0) {
-    restrictBases = new Set(
-      opts.restrictPaths
-        .map((p) => p.match(/^BE\d{4}/i)?.[0]?.toUpperCase())
-        .filter((x): x is string => Boolean(x))
-    );
-  }
 
   const machines: MachineSection[] = [];
 
   for (const item of order.includedItems) {
     const base = item.code.toUpperCase();
-    if (restrictBases && !restrictBases.has(base)) continue;
+    if (!allowed.has(base)) continue;
     const bomFile = bomFiles.get(base);
     if (!bomFile) continue;
 
