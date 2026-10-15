@@ -209,6 +209,88 @@ a {
   line-height: 1.4;
 }
 
+.archivio {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 22px 26px 48px;
+}
+
+.archivio-head h2 {
+  margin: 0 0 6px;
+  font-size: 22px;
+}
+
+.archivio .hint {
+  margin: 0;
+  padding: 0;
+  color: var(--muted);
+}
+
+.archivio .upload-box {
+  padding: 16px 0 0;
+  max-width: 720px;
+}
+
+.order-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0;
+}
+
+.order-filters button.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.order-group {
+  margin-bottom: 26px;
+}
+
+.order-group h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+
+.distinta-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.distinta-card .name {
+  font-weight: 600;
+}
+
+.distinta-card .sub {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.link-orders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 10px;
+}
+
+.link-orders label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .doc {
   display: flex;
   align-items: center;

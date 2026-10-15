@@ -32,3 +32,4 @@ next-env.d.ts
 # account locali (hash password) e cache di classificazione
 /data/utenti.json
 /data/classificazione.json
+/data/archivio.json

@@ -133,6 +133,7 @@ function toDocumento(
     modified: new Date(file.mtimeMs).toISOString(),
     kind: meta.kind,
     code: meta.code,
+    codes: meta.codes,
   };
 }
 

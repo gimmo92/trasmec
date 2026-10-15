@@ -69,6 +69,8 @@ export interface DocumentoFile {
   kind: "distinta" | "ordine" | "lista-motori" | "lista-sensori" | "listino" | "template" | "altro";
   /** Codice commessa BE####, se riconosciuto dentro il file. */
   code?: string;
+  /** Codici BE#### citati dall'ordine (dopo AFTER SALES, se c'è). */
+  codes?: string[];
 }
 
 export const DOC_KIND_LABEL: Record<DocumentoFile["kind"], string> = {

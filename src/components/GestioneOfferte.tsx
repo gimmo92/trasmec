@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import CaricaDocumenti from "@/components/CaricaDocumenti";
 import { DOC_KIND_LABEL, type DocumentoFile, type MachineSection, type Offer, type ProposalLine } from "@/lib/types";
 import { compoundFillIndex, isNonSeSensorLine } from "@/lib/highlight";
 
@@ -113,12 +112,11 @@ function MachineBlock({
   );
 }
 
-export default function GestioneOfferte() {
+export default function GestioneOfferte({ active = true }: { active?: boolean }) {
   const [health, setHealth] = useState<Health | null>(null);
   const [docs, setDocs] = useState<DocumentoFile[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loadingDocs, setLoadingDocs] = useState(true);
-  const [cloudDocs, setCloudDocs] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [offer, setOffer] = useState<Offer | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -129,7 +127,6 @@ export default function GestioneOfferte() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(String(data.error || "Errore documenti"));
     setDocs(data.files ?? []);
-    setCloudDocs(Boolean(data.supabase));
   }, []);
 
   useEffect(() => {
@@ -137,10 +134,14 @@ export default function GestioneOfferte() {
       .then((r) => r.json())
       .then(setHealth)
       .catch(() => setHealth(null));
+  }, []);
+
+  useEffect(() => {
+    if (!active) return;
     reloadDocs()
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoadingDocs(false));
-  }, [reloadDocs]);
+  }, [active, reloadDocs]);
 
   const ordini = useMemo(() => docs.filter((d) => d.kind === "ordine"), [docs]);
   const distinte = useMemo(() => docs.filter((d) => d.kind === "distinta"), [docs]);
@@ -229,16 +230,6 @@ export default function GestioneOfferte() {
             : "API key Claude mancante (.env.local)"}
         </div>
 
-        <CaricaDocumenti
-          cloud={cloudDocs}
-          onUploaded={async () => {
-            try {
-              await reloadDocs();
-            } catch (e) {
-              setError(e instanceof Error ? e.message : String(e));
-            }
-          }}
-        />
         <div className="hint">
           Le distinte si possono limitare con la spunta. Senza spunta l&apos;offerta usa
           tutti gli item dell&apos;ordine dopo AFTER SALES.

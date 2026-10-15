@@ -10,6 +10,7 @@ export type DocKind = DocumentoFile["kind"];
 export interface ClassifiedDoc {
   kind: DocKind;
   code?: string;
+  codes?: string[];
 }
 
 interface CacheEntry extends ClassifiedDoc {
@@ -25,6 +26,18 @@ let memory: Record<string, CacheEntry> | null = null;
 function beCode(text: string): string | undefined {
   const match = text.match(/BE\d{4}/i);
   return match?.[0].toUpperCase();
+}
+
+/** Codici macchina dell'ordine: dopo AFTER SALES, altrimenti tutti i BE#### trovati. */
+function orderCodes(text: string): string[] {
+  const marker = text.search(/AFTER\s*SALES/i);
+  const slice = marker >= 0 ? text.slice(marker) : text;
+  const found: string[] = [];
+  for (const match of slice.matchAll(/BE\d{4}/gi)) {
+    const code = match[0].toUpperCase();
+    if (!found.includes(code)) found.push(code);
+  }
+  return found;
 }
 
 /** Classificazione di riserva quando il contenuto non si lascia leggere. */
@@ -111,11 +124,12 @@ function classifyExcel(filePath: string, name: string): ClassifiedDoc {
 
 async function classifyPdf(filePath: string, name: string): Promise<ClassifiedDoc> {
   const text = (await extractPdfText(filePath)).slice(0, 40000);
+  const codes = orderCodes(text);
   if (/AFTER\s*SALES/i.test(text) || /NR\.\s*DOCUMENTO/i.test(text)) {
-    return { kind: "ordine", code: beCode(text) };
+    return { kind: "ordine", code: codes[0], codes };
   }
-  if (/BE\d{4}/i.test(text) && /COMMESSA|ORDINE|ORDER\s+CONFIRMATION/i.test(text)) {
-    return { kind: "ordine", code: beCode(text) };
+  if (codes.length && /COMMESSA|ORDINE|ORDER\s+CONFIRMATION/i.test(text)) {
+    return { kind: "ordine", code: codes[0], codes };
   }
   if (/offerta\s+commerciale/i.test(text) || /template/i.test(name)) return { kind: "template" };
   return { kind: "altro" };
@@ -170,7 +184,7 @@ async function saveCache(cache: Record<string, CacheEntry>): Promise<void> {
 export function cachedKind(name: string, size: number, mtimeMs: number): ClassifiedDoc | null {
   const hit = memory?.[name];
   if (!hit || hit.size !== size || hit.mtime !== mtimeMs) return null;
-  return { kind: hit.kind, code: hit.code };
+  return { kind: hit.kind, code: hit.code, codes: hit.codes };
 }
 
 /** Classifica i file nuovi o modificati e ricorda il risultato. */
@@ -183,7 +197,10 @@ export async function ensureClassificazioni(
   for (const file of files) {
     seen.add(file.name);
     const hit = cache[file.name];
-    if (hit && hit.size === file.size && hit.mtime === file.mtimeMs && hit.kind) continue;
+    const orderWithoutCodes = hit?.kind === "ordine" && !hit.codes;
+    if (hit && hit.size === file.size && hit.mtime === file.mtimeMs && hit.kind && !orderWithoutCodes) {
+      continue;
+    }
     const meta = await classifyFile(file.full, file.name);
     cache[file.name] = { ...meta, size: file.size, mtime: file.mtimeMs };
     dirty = true;

@@ -2,16 +2,17 @@
 
 import { useState } from "react";
 import AccountBar from "@/components/AccountBar";
+import Archivio from "@/components/Archivio";
 import GestioneOfferte from "@/components/GestioneOfferte";
 import IndiciRicambi from "@/components/IndiciRicambi";
 import IstruzioniPersonalizzate from "@/components/IstruzioniPersonalizzate";
 import OfferteV2 from "@/components/OfferteV2";
 import SigleSpareParts from "@/components/SigleSpareParts";
 
-type Tab = "offerte" | "offerte-v2" | "indici" | "sigle" | "istruzioni";
+type Tab = "archivio" | "offerte" | "offerte-v2" | "indici" | "sigle" | "istruzioni";
 
 export default function Home() {
-  const [tab, setTab] = useState<Tab>("offerte");
+  const [tab, setTab] = useState<Tab>("archivio");
 
   return (
     <div className="shell">
@@ -21,6 +22,14 @@ export default function Home() {
           <h1>Trasmec</h1>
         </div>
         <div className="tabs" role="tablist">
+          <button
+            role="tab"
+            aria-selected={tab === "archivio"}
+            className={tab === "archivio" ? "tab on" : "tab"}
+            onClick={() => setTab("archivio")}
+          >
+            Archivio
+          </button>
           <button
             role="tab"
             aria-selected={tab === "offerte"}
@@ -66,10 +75,17 @@ export default function Home() {
       </nav>
       <section
         role="tabpanel"
+        hidden={tab !== "archivio"}
+        className="tab-panel"
+      >
+        <Archivio />
+      </section>
+      <section
+        role="tabpanel"
         hidden={tab !== "offerte"}
         className="tab-panel"
       >
-        <GestioneOfferte />
+        <GestioneOfferte active={tab === "offerte"} />
       </section>
       <section
         role="tabpanel"
