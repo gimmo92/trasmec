@@ -120,6 +120,7 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
   const [health, setHealth] = useState<Health | null>(null);
   const [docs, setDocs] = useState<DocumentoFile[]>([]);
   const [distinteAll, setDistinteAll] = useState<ArchivioDistinta[]>([]);
+  const [listeAll, setListeAll] = useState<ArchivioDistinta[]>([]);
   const [orderPath, setOrderPath] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loadingDocs, setLoadingDocs] = useState(true);
@@ -137,6 +138,7 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
     const rest = (data.altri ?? []) as DocumentoFile[];
     setDocs([...orders, ...rest]);
     setDistinteAll(boms);
+    setListeAll((data.liste ?? []) as ArchivioDistinta[]);
     setOrderPath((current) => (orders.some((order) => order.path === current) ? current : ""));
   }, []);
 
@@ -159,6 +161,13 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
     () => (orderPath ? distinteAll.filter((d) => d.ordini.includes(orderPath)) : []),
     [distinteAll, orderPath]
   );
+  const liste = useMemo(
+    () => (orderPath ? listeAll.filter((d) => d.ordini.includes(orderPath)) : []),
+    [listeAll, orderPath]
+  );
+  const offerWarnings = Array.isArray(offer?.meta?.warnings)
+    ? (offer.meta.warnings as unknown[]).map(String)
+    : [];
   const altri = useMemo(
     () => docs.filter((d) => d.kind !== "ordine" && d.kind !== "distinta"),
     [docs]
@@ -305,6 +314,24 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
             </div>
           ))}
 
+          {orderPath && (
+            <>
+              <div className="section-title">Motori e sensori ({liste.length})</div>
+              {liste.length === 0 && !loadingDocs && (
+                <div className="hint">Nessuna lista motori o sensori associata a questo ordine.</div>
+              )}
+              {liste.map((d) => (
+                <div key={d.path} className="doc static">
+                  <div className="meta">
+                    <div className="name">{d.name}</div>
+                    <div className="sub">{formatSize(d.sizeBytes)}</div>
+                  </div>
+                  <span className={`badge ${d.kind}`}>{DOC_KIND_LABEL[d.kind]}</span>
+                </div>
+              ))}
+            </>
+          )}
+
           {altri.length > 0 && (
             <>
               <div className="section-title">Altri documenti</div>
@@ -429,8 +456,13 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
               />
             ))}
 
-            {offer.machines.some((m) => m.warnings.length > 0) && (
+            {(offerWarnings.length > 0 || offer.machines.some((m) => m.warnings.length > 0)) && (
               <div className="offer-warnings">
+                {offerWarnings.map((w, i) => (
+                  <div className="warn small" key={`offer-${i}`}>
+                    {w}
+                  </div>
+                ))}
                 {offer.machines.flatMap((m) =>
                   m.warnings.map((w, i) => (
                     <div className="warn small" key={`${m.itemCode}-${i}`}>

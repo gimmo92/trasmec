@@ -15,6 +15,7 @@ import {
 import { refineOfferWithClaude } from "./claudeoffer";
 import { prepareApp } from "./prepare";
 import { isJobCode, jobCode } from "./jobcode";
+import { readArchivio } from "./archivio";
 
 export interface BuildOfferOptions {
   /** File dell'ordine da cui generare. Obbligatorio. */
@@ -466,12 +467,6 @@ export async function buildSparePartsOffer(
     throw new Error("Seleziona un ordine prima di generare l'offerta.");
   }
   const pdfDoc = docs.find((d) => d.kind === "ordine" && (d.path === opts.orderPath || d.name === opts.orderPath));
-  const mlDoc =
-    docs.find((d) => d.kind === "lista-motori") ??
-    docs.find((d) => /-ML\.xlsx$/i.test(d.name));
-  const slDoc =
-    docs.find((d) => d.kind === "lista-sensori") ??
-    docs.find((d) => /-SL\.xlsx$/i.test(d.name));
   const splDoc =
     docs.find((d) => d.kind === "listino" && /spare\s*parts?\s*list/i.test(d.name)) ??
     docs.find((d) => /spare\s*parts?\s*list/i.test(d.name)) ??
@@ -480,6 +475,14 @@ export async function buildSparePartsOffer(
   if (!pdfDoc) {
     throw new Error("Ordine non trovato. Selezionalo di nuovo dall'elenco.");
   }
+
+  const { liste } = await readArchivio();
+  const listeOrdine = liste.filter((file) => file.ordini.includes(pdfDoc.name));
+  const mlDocs = listeOrdine.filter((file) => file.kind === "lista-motori");
+  const slDocs = listeOrdine.filter((file) => file.kind === "lista-sensori");
+  const offerWarnings: string[] = [];
+  if (!mlDocs.length) offerWarnings.push("Nessuna lista motori associata a questo ordine: carica il file ML nell'Archivio.");
+  if (!slDocs.length) offerWarnings.push("Nessuna lista sensori associata a questo ordine: carica il file SL nell'Archivio.");
 
   const order = await parseOrderPdf(resolveDocumento(pdfDoc.path));
   const bomFiles = mapBomFiles(docs);
@@ -521,12 +524,12 @@ export async function buildSparePartsOffer(
         bearingsBySellable: new Map(),
       };
 
-  const motorsByBase: Map<string, ProposalLine[]> = mlDoc
-    ? groupByJobBase(parseMotorList(resolveDocumento(mlDoc.path)))
-    : new Map();
-  const sensorsByBase: Map<string, ProposalLine[]> = slDoc
-    ? groupByJobBase(parseSensorList(resolveDocumento(slDoc.path)))
-    : new Map();
+  const motorsByBase: Map<string, ProposalLine[]> = groupByJobBase(
+    mlDocs.flatMap((file) => parseMotorList(resolveDocumento(file.path)))
+  );
+  const sensorsByBase: Map<string, ProposalLine[]> = groupByJobBase(
+    slDocs.flatMap((file) => parseSensorList(resolveDocumento(file.path)))
+  );
 
   const machines: MachineSection[] = [];
 
@@ -590,8 +593,9 @@ export async function buildSparePartsOffer(
     machines,
     meta: {
       orderFile: pdfDoc.name,
-      motorListFile: mlDoc?.name,
-      sensorListFile: slDoc?.name,
+      motorListFiles: mlDocs.map((file) => file.name),
+      sensorListFiles: slDocs.map((file) => file.name),
+      warnings: offerWarnings,
       spareListFile: splDoc?.name,
       spareCodesIndexed: spareMap.size,
       afterSalesCode: order.afterSalesCode,

@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import * as XLSX from "xlsx";
 import { getJson, putJson, useCloud } from "./cloud";
-import { jobCode, jobCodeRegex } from "./jobcode";
+import { isJobCode, jobCode, jobCodeRegex } from "./jobcode";
+import { parseMotorList, parseSensorList } from "./motorsensor";
 import { extractPdfText, parseOrderText } from "./orderpdf";
 import type { DocumentoFile } from "./types";
 
@@ -21,7 +22,7 @@ interface CacheEntry extends ClassifiedDoc {
 }
 
 /** Va alzato quando cambiano le regole, così i file già visti vengono riclassificati. */
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;
 
 const DATA_FILE = path.join(process.cwd(), "data", "classificazione.json");
 const CLOUD_PATH = "config/classificazione.json";
@@ -129,16 +130,32 @@ async function classifyPdf(filePath: string, name: string): Promise<ClassifiedDo
   return { kind: "altro" };
 }
 
+/** Commesse citate da una lista motori/sensori: servono per collegarla all'ordine. */
+function listCodes(filePath: string, kind: DocKind): string[] {
+  const rows = kind === "lista-motori" ? parseMotorList(filePath) : parseSensorList(filePath);
+  return [...new Set(rows.map((row) => row.jobBase).filter(isJobCode))];
+}
+
 /** Guarda il contenuto, non solo il nome: distinta, ordine, listino, motori, sensori. */
 export async function classifyFile(filePath: string, name: string): Promise<ClassifiedDoc> {
   const ext = path.extname(name).toLowerCase();
+  let meta: ClassifiedDoc;
   try {
     if (ext === ".pdf") return await classifyPdf(filePath, name);
-    if (ext === ".xlsx" || ext === ".xlsm" || ext === ".xls") return classifyExcel(filePath, name);
+    if (ext !== ".xlsx" && ext !== ".xlsm" && ext !== ".xls") return kindFromName(name);
+    meta = classifyExcel(filePath, name);
   } catch {
-    return kindFromName(name);
+    meta = kindFromName(name);
   }
-  return kindFromName(name);
+  if (meta.kind === "lista-motori" || meta.kind === "lista-sensori") {
+    try {
+      const codes = listCodes(filePath, meta.kind);
+      return { kind: meta.kind, code: codes[0], codes };
+    } catch {
+      return meta;
+    }
+  }
+  return meta;
 }
 
 function readLocalCache(): Record<string, CacheEntry> {

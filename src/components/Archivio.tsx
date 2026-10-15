@@ -40,7 +40,7 @@ export default function Archivio() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(String(data.error || "Errore archivio"));
     setOrdini(data.ordini ?? []);
-    setDistinte(data.distinte ?? []);
+    setDistinte([...(data.distinte ?? []), ...(data.liste ?? [])]);
     setAltri(data.altri ?? []);
     setCloud(Boolean(data.supabase));
   }, []);
@@ -64,7 +64,7 @@ export default function Archivio() {
     const has = file.ordini.includes(orderName);
     const next = has ? file.ordini.filter((name) => name !== orderName) : [...file.ordini, orderName];
     if (ordini.length > 0 && next.length === 0) {
-      setError("Ogni distinta va associata ad almeno un ordine");
+      setError("Ogni file va associato ad almeno un ordine");
       return;
     }
     setError("");
@@ -94,8 +94,8 @@ export default function Archivio() {
         <div>
           <h2>Archivio</h2>
           <p className="hint">
-            Carica ordini e distinte. Ogni distinta resta collegata agli ordini che citano il suo
-            codice, e puoi aggiungerne altri.
+            Carica ordini, distinte e liste motori/sensori. Ogni file resta collegato agli ordini
+            che citano le sue commesse, e puoi cambiare il collegamento con le caselle.
           </p>
         </div>
       </div>
@@ -140,7 +140,7 @@ export default function Archivio() {
           <section key={order.name} className="order-group">
             <h3>{orderTitle(order)}</h3>
             {orderCodesLabel(order) && <p className="hint">{orderCodesLabel(order)}</p>}
-            {rows.length === 0 && <p className="hint">Nessuna distinta associata a questo ordine.</p>}
+            {rows.length === 0 && <p className="hint">Nessun file associato a questo ordine.</p>}
             {rows.map((file) => (
               <DistintaCard
                 key={`${order.name}:${file.name}`}
@@ -200,7 +200,8 @@ function DistintaCard({
       <div>
         <div className="name">{file.name}</div>
         <div className="sub">
-          {file.code ? `${file.code} · ` : ""}
+          {file.kind === "distinta" && file.code ? `${file.code} · ` : ""}
+          {file.kind !== "distinta" && file.codes?.length ? `${file.codes.length} commesse · ` : ""}
           {formatSize(file.sizeBytes)}
           {file.manual ? " · associazione manuale" : ""}
         </div>
@@ -219,7 +220,7 @@ function DistintaCard({
           </div>
         )}
       </div>
-      <span className="badge distinta">distinta</span>
+      <span className={`badge ${file.kind}`}>{DOC_KIND_LABEL[file.kind]}</span>
     </article>
   );
 }
