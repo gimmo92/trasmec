@@ -255,8 +255,8 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
         </div>
 
         <div className="hint">
-          Seleziona un ordine. Senza spunte sulle distinte, l&apos;offerta usa tutte
-          quelle associate a quell&apos;ordine.
+          Seleziona un ordine: leggo gli item dopo AFTER SALES e analizzo le distinte
+          con quei codici. Con le spunte limiti l&apos;analisi alle distinte scelte.
         </div>
         <div className="doc-list">
           {loadingDocs && <div className="status">Caricamento…</div>}

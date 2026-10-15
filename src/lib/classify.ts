@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import * as XLSX from "xlsx";
 import { getJson, putJson, useCloud } from "./cloud";
-import { extractPdfText } from "./orderpdf";
+import { jobCode, jobCodeRegex } from "./jobcode";
+import { extractPdfText, parseOrderText } from "./orderpdf";
 import type { DocumentoFile } from "./types";
 
 export type DocKind = DocumentoFile["kind"];
@@ -16,39 +17,31 @@ export interface ClassifiedDoc {
 interface CacheEntry extends ClassifiedDoc {
   size: number;
   mtime: number;
+  v?: number;
 }
+
+/** Va alzato quando cambiano le regole, così i file già visti vengono riclassificati. */
+const CACHE_VERSION = 2;
 
 const DATA_FILE = path.join(process.cwd(), "data", "classificazione.json");
 const CLOUD_PATH = "config/classificazione.json";
 
 let memory: Record<string, CacheEntry> | null = null;
 
-function beCode(text: string): string | undefined {
-  const match = text.match(/BE\d{4}/i);
-  return match?.[0].toUpperCase();
-}
-
-/** Codici macchina dell'ordine: dopo AFTER SALES, altrimenti tutti i BE#### trovati. */
+/** Codici macchina dell'ordine: gli item dopo AFTER SALES. */
 function orderCodes(text: string): string[] {
-  const marker = text.search(/AFTER\s*SALES/i);
-  const slice = marker >= 0 ? text.slice(marker) : text;
-  const found: string[] = [];
-  for (const match of slice.matchAll(/BE\d{4}/gi)) {
-    const code = match[0].toUpperCase();
-    if (!found.includes(code)) found.push(code);
-  }
-  return found;
+  return parseOrderText(text).includedItems.map((item) => item.code);
 }
 
 /** Classificazione di riserva quando il contenuto non si lascia leggere. */
 export function kindFromName(name: string): ClassifiedDoc {
   const n = name.toLowerCase();
-  const code = beCode(name);
+  const code = jobCode(name);
   if (n.endsWith(".pdf")) return { kind: "altro" };
   if (n.includes("-ml") || n.includes("motor")) return { kind: "lista-motori" };
   if (n.includes("-sl") || n.includes("sensor")) return { kind: "lista-sensori" };
   if (n.includes("spare") || n.includes("listino") || n.includes("price")) return { kind: "listino" };
-  if (/^be\d+/i.test(name) || n.endsWith(".xlsm")) return { kind: "distinta", code };
+  if (/^b[a-z]\d{4}/i.test(name) || n.endsWith(".xlsm")) return { kind: "distinta", code };
   return { kind: "altro", code };
 }
 
@@ -82,16 +75,16 @@ function peekSheet(filePath: string, sheet: string): string {
 function classifyExcel(filePath: string, name: string): ClassifiedDoc {
   const names = sheetNames(filePath);
   const lower = names.map((sheet) => sheet.toLowerCase().trim());
-  const codeInName = beCode(name);
+  const codeInName = jobCode(name);
 
   const distintaSheet = names.find((sheet) =>
-    /^(parts only|structured|bom index)$/i.test(sheet.trim())
+    /^(parts only|structured|bom index|distinta|distinta en)$/i.test(sheet.trim())
   );
   if (distintaSheet) {
     const codeSheet =
       names.find((sheet) => /^(bom index|1)$/i.test(sheet.trim())) ?? distintaSheet;
     const peeked = codeInName ? "" : peekSheet(filePath, codeSheet);
-    return { kind: "distinta", code: codeInName ?? beCode(peeked) };
+    return { kind: "distinta", code: codeInName ?? jobCode(peeked) };
   }
 
   if (lower.includes("ml")) return { kind: "lista-motori", code: codeInName };
@@ -103,16 +96,17 @@ function classifyExcel(filePath: string, name: string): ClassifiedDoc {
     names[0];
   const peeked = sampleSheet ? peekSheet(filePath, sampleSheet) : "";
   const blob = `${name}\n${names.join("\n")}\n${peeked}`.toLowerCase();
-  const code = codeInName ?? beCode(`${name}\n${peeked}`);
+  const code = codeInName ?? jobCode(`${name}\n${peeked}`);
+  const hasJob = jobCodeRegex("i").test(blob);
 
   if (/part number/.test(blob) && /description|qty|job nr|plate nr/.test(blob)) {
     return { kind: "distinta", code };
   }
-  if (/job nr|plate nr|bom index/.test(blob) && /be\d{4}/i.test(blob)) {
+  if (/job nr|plate nr|bom index/.test(blob) && hasJob) {
     return { kind: "distinta", code };
   }
   // Scheda di configurazione (foglio "1"): Job / Serial Number / Machine Code, senza "Parts only".
-  if (lower.includes("1") && /be\d{4}/i.test(blob) && /\bjob\b|serial number|machine code/.test(blob)) {
+  if (lower.includes("1") && hasJob && /\bjob\b|serial number|machine code/.test(blob)) {
     return { kind: "distinta", code };
   }
   if (/\bcodice\b/.test(blob) && /disegno/.test(blob)) return { kind: "listino", code };
@@ -183,7 +177,7 @@ async function saveCache(cache: Record<string, CacheEntry>): Promise<void> {
 
 export function cachedKind(name: string, size: number, mtimeMs: number): ClassifiedDoc | null {
   const hit = memory?.[name];
-  if (!hit || hit.size !== size || hit.mtime !== mtimeMs) return null;
+  if (!hit || hit.v !== CACHE_VERSION || hit.size !== size || hit.mtime !== mtimeMs) return null;
   return { kind: hit.kind, code: hit.code, codes: hit.codes };
 }
 
@@ -197,12 +191,10 @@ export async function ensureClassificazioni(
   for (const file of files) {
     seen.add(file.name);
     const hit = cache[file.name];
-    const orderWithoutCodes = hit?.kind === "ordine" && !hit.codes;
-    if (hit && hit.size === file.size && hit.mtime === file.mtimeMs && hit.kind && !orderWithoutCodes) {
-      continue;
-    }
+    const fresh = hit?.v === CACHE_VERSION && hit.size === file.size && hit.mtime === file.mtimeMs;
+    if (hit && fresh && hit.kind) continue;
     const meta = await classifyFile(file.full, file.name);
-    cache[file.name] = { ...meta, size: file.size, mtime: file.mtimeMs };
+    cache[file.name] = { ...meta, size: file.size, mtime: file.mtimeMs, v: CACHE_VERSION };
     dirty = true;
   }
   for (const name of Object.keys(cache)) {

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { jobCodeRegex, jobCodes } from "./jobcode";
 import type { OfferHeader } from "./types";
 
 export interface OrderItem {
@@ -86,13 +87,18 @@ export async function extractPdfText(filePath: string): Promise<string> {
   }
 }
 
+/** Riga che chiude un item d'ordine: "1 NR 28/10/2025 BE0801" oppure "1,000 NR 53.260,00 POS. … BF0509". */
+const ITEM_LINE = /^\d[\d.,]*\s+NR\b.*?\b(B[A-Z]\d{4})\s*$/i;
+const PAGE_FOOTER = /^--\s*\d+\s+of\s+\d+\s*--$/i;
+
 /** Estrae header + descrizione item dal testo dell'ordine. */
-function parseOrderText(text: string): Omit<ParsedOrder, "rawText"> {
+export function parseOrderText(text: string): Omit<ParsedOrder, "rawText"> {
   const lines = text.split(/\r?\n/).map((l) => l.trim());
 
   // Header
   const firstLine = lines.find((l) => l.length > 0) ?? "";
-  const projectName = firstLine.split(/\t|REF\. PROJECT/i)[0].trim();
+  const projectLine = lines.find((l) => /REF\.\s*PROJECT/i.test(l)) ?? firstLine;
+  const projectName = projectLine.split(/\t|REF\. PROJECT/i)[0].trim();
 
   let orderNumber: string | undefined;
   let orderDate: string | undefined;
@@ -100,6 +106,9 @@ function parseOrderText(text: string): Omit<ParsedOrder, "rawText"> {
   if (docMatch) {
     orderNumber = docMatch[1];
     orderDate = docMatch[2];
+  } else {
+    orderNumber = text.match(/DOCUMENT\s+NO\.\s*\n\s*(\S+)/i)?.[1];
+    orderDate = text.match(/\bDATE\s*\n\s*(\d{2}\/\d{2}\/\d{4})/)?.[1];
   }
 
   let customer: string | undefined;
@@ -111,33 +120,57 @@ function parseOrderText(text: string): Omit<ParsedOrder, "rawText"> {
         break;
       }
     }
+  } else {
+    customer = text.match(/Invoiced customer:\s*\S+\s*-\s*([^\[\n]+)/i)?.[1]?.trim();
   }
 
   const location =
     /SINGAPORE/i.test(projectName) ? "SINGAPORE" : undefined;
 
-  // Tutti i codici in ordine (unici)
+  const itemLines: { code: string; line: number }[] = [];
+  lines.forEach((l, i) => {
+    const m = l.match(ITEM_LINE);
+    if (m) itemLines.push({ code: m[1].toUpperCase(), line: i });
+  });
+
+  // Tutti i codici in ordine (unici): prima le righe item, altrimenti ogni codice nel testo
   const allItems: string[] = [];
-  for (const m of text.matchAll(/BE\d{4}/g)) {
-    if (!allItems.includes(m[0])) allItems.push(m[0]);
+  const source = itemLines.length ? itemLines.map((r) => r.code) : jobCodes(text);
+  for (const code of source) {
+    if (!allItems.includes(code)) allItems.push(code);
   }
 
-  // Item "AFTER SALES": ultimo codice prima della dicitura
-  const asPos = text.search(/AFTER\s*SALES/i);
+  // Item "AFTER SALES": la prima riga item da quella dicitura in poi
+  const asLine = lines.findIndex((l) => /AFTER\s*SALES/i.test(l));
   let afterSalesCode: string | undefined;
-  if (asPos >= 0) {
-    for (const m of text.matchAll(/BE\d{4}/g)) {
-      if ((m.index ?? 0) < asPos) afterSalesCode = m[0];
+  if (asLine >= 0 && itemLines.length) {
+    afterSalesCode = itemLines.find((r) => r.line >= asLine)?.code;
+  } else if (asLine >= 0) {
+    const asPos = text.search(/AFTER\s*SALES/i);
+    for (const m of text.matchAll(jobCodeRegex())) {
+      if ((m.index ?? 0) < asPos) afterSalesCode = m[0].toUpperCase();
       else break;
     }
   }
 
   // Descrizioni per blocco (marker compatto *BE####*)
   const descByCode = new Map<string, string>();
-  const blockRe = /\*(BE\d{4})\*/g;
+  const blockRe = /\*(B[A-Z]\d{4})\*/g;
   const anchors: { code: string; idx: number }[] = [];
   for (const m of text.matchAll(blockRe)) {
     anchors.push({ code: m[1], idx: m.index ?? 0 });
+  }
+  // Senza marker la descrizione segue la riga item, fino alla successiva
+  if (!anchors.length) {
+    itemLines.forEach((row, i) => {
+      const end = i + 1 < itemLines.length ? itemLines[i + 1].line : lines.length;
+      const desc: string[] = [];
+      for (let j = row.line + 1; j < end; j++) {
+        if (PAGE_FOOTER.test(lines[j])) break;
+        if (lines[j]) desc.push(lines[j]);
+      }
+      if (desc.length && !descByCode.has(row.code)) descByCode.set(row.code, desc.join(" "));
+    });
   }
   for (let i = 0; i < anchors.length; i++) {
     const start = anchors[i].idx;

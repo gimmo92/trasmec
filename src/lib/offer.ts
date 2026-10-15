@@ -14,7 +14,7 @@ import {
 } from "./sparecatalog";
 import { refineOfferWithClaude } from "./claudeoffer";
 import { prepareApp } from "./prepare";
-import { readArchivio } from "./archivio";
+import { isJobCode, jobCode } from "./jobcode";
 
 export interface BuildOfferOptions {
   /** File dell'ordine da cui generare. Obbligatorio. */
@@ -27,9 +27,8 @@ function mapBomFiles(docs: DocumentoFile[]): Map<string, string> {
   for (const d of docs) {
     if (d.kind !== "distinta") continue;
     if (!/\.(xlsx|xlsm|xls)$/i.test(d.name)) continue;
-    const fromName = d.name.match(/BE\d{4}/i)?.[0];
-    const base = (d.code || fromName || "").toUpperCase();
-    if (!/^BE\d{4}$/.test(base)) continue;
+    const base = (d.code || jobCode(d.name) || "").toUpperCase();
+    if (!isJobCode(base)) continue;
     if (!map.has(base)) map.set(base, d.name);
   }
   return map;
@@ -474,26 +473,34 @@ export async function buildSparePartsOffer(
     docs.find((d) => d.kind === "lista-sensori") ??
     docs.find((d) => /-SL\.xlsx$/i.test(d.name));
   const splDoc =
-    docs.find((d) => d.kind === "listino") ??
-    docs.find((d) => /spare\s*parts?\s*list/i.test(d.name));
+    docs.find((d) => d.kind === "listino" && /spare\s*parts?\s*list/i.test(d.name)) ??
+    docs.find((d) => /spare\s*parts?\s*list/i.test(d.name)) ??
+    docs.find((d) => d.kind === "listino");
 
   if (!pdfDoc) {
     throw new Error("Ordine non trovato. Selezionalo di nuovo dall'elenco.");
   }
 
-  const archivio = await readArchivio();
-  const linked = archivio.distinte.filter((d) => d.ordini.includes(pdfDoc.name));
-  const codeOf = (fileName: string): string | undefined => {
-    const row = linked.find((d) => d.name === fileName || d.path === fileName);
-    return row?.code || fileName.match(/BE\d{4}/i)?.[0]?.toUpperCase();
-  };
-  const allowed = new Set(
-    (opts.restrictPaths && opts.restrictPaths.length > 0 ? opts.restrictPaths : linked.map((d) => d.name))
-      .map((name) => codeOf(name))
-      .filter((code): code is string => Boolean(code))
-  );
-  if (allowed.size === 0) {
-    throw new Error("Nessuna distinta associata a questo ordine.");
+  const order = await parseOrderPdf(resolveDocumento(pdfDoc.path));
+  const bomFiles = mapBomFiles(docs);
+  const orderCodes = order.includedItems.map((item) => item.code.toUpperCase());
+  if (!orderCodes.length) {
+    throw new Error(`Nell'ordine ${pdfDoc.name} non ho trovato item dopo AFTER SALES.`);
+  }
+  const found = orderCodes.filter((code) => bomFiles.has(code));
+  if (!found.length) {
+    throw new Error(
+      `Nessuna distinta caricata per gli item dell'ordine (${orderCodes.join(", ")}). Caricale nell'Archivio.`
+    );
+  }
+
+  let allowed = new Set(found);
+  if (opts.restrictPaths && opts.restrictPaths.length > 0) {
+    const byName = new Map(docs.map((d) => [d.name, d]));
+    const picked = opts.restrictPaths
+      .map((name) => (byName.get(name)?.code || jobCode(name) || "").toUpperCase())
+      .filter((code) => allowed.has(code));
+    if (picked.length) allowed = new Set(picked);
   }
 
   const indices = listIndici().filter((r) => r.indice.trim());
@@ -514,15 +521,12 @@ export async function buildSparePartsOffer(
         bearingsBySellable: new Map(),
       };
 
-  const order = await parseOrderPdf(resolveDocumento(pdfDoc.path));
   const motorsByBase: Map<string, ProposalLine[]> = mlDoc
     ? groupByJobBase(parseMotorList(resolveDocumento(mlDoc.path)))
     : new Map();
   const sensorsByBase: Map<string, ProposalLine[]> = slDoc
     ? groupByJobBase(parseSensorList(resolveDocumento(slDoc.path)))
     : new Map();
-
-  const bomFiles = mapBomFiles(docs);
 
   const machines: MachineSection[] = [];
 

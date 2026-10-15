@@ -1,4 +1,5 @@
 import { readWorkbookGrids, parseNum, recommendedFromInstalled, type Grid } from "./excel";
+import { isJobNr, jobCode } from "./jobcode";
 import type { ProposalLine } from "./types";
 
 /** Riga motore/sensore con il codice distinta (job) per il raggruppamento. */
@@ -14,10 +15,9 @@ function cellStr(v: unknown): string {
   return String(v).trim();
 }
 
-/** Estrae il codice base BE#### da un job (es. "BE0806C" -> "BE0806"). */
+/** Estrae il codice base da un job (es. "BE0806C" -> "BE0806"). */
 export function jobBase(job: string): string {
-  const m = job.match(/BE\d{4}/i);
-  return m ? m[0].toUpperCase() : job.trim().toUpperCase();
+  return jobCode(job) ?? job.trim().toUpperCase();
 }
 
 /** Individua la colonna del "job" cercando la colonna con più valori tipo BE####. */
@@ -26,7 +26,7 @@ function detectJobCol(grid: Grid): number {
   for (let r = 0; r < grid.length; r++) {
     const row = grid[r] ?? [];
     for (let c = 0; c < row.length; c++) {
-      if (/^BE\d{4}[A-Z]?$/i.test(cellStr(row[c]))) counts[c] = (counts[c] ?? 0) + 1;
+      if (isJobNr(cellStr(row[c]))) counts[c] = (counts[c] ?? 0) + 1;
     }
   }
   let best = 1;
@@ -43,7 +43,7 @@ function detectJobCol(grid: Grid): number {
 /** Trova la prima riga dati (primo BE#### nella colonna job). */
 function firstDataRow(grid: Grid, jobCol: number): number {
   for (let r = 0; r < grid.length; r++) {
-    if (/^BE\d{4}[A-Z]?$/i.test(cellStr(grid[r]?.[jobCol]))) return r;
+    if (isJobNr(cellStr(grid[r]?.[jobCol]))) return r;
   }
   return -1;
 }
