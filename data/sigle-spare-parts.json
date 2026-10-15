@@ -1,0 +1,52 @@
+[
+  {
+    "id": "sigla-sc",
+    "n": 1,
+    "sigla": "SC"
+  },
+  {
+    "id": "sigla-rn",
+    "n": 2,
+    "sigla": "RN"
+  },
+  {
+    "id": "sigla-sa",
+    "n": 3,
+    "sigla": "SA"
+  },
+  {
+    "id": "sigla-tp",
+    "n": 4,
+    "sigla": "TP"
+  },
+  {
+    "id": "sigla-ca",
+    "n": 5,
+    "sigla": "CA"
+  },
+  {
+    "id": "sigla-r0",
+    "n": 6,
+    "sigla": "R0"
+  },
+  {
+    "id": "sigla-ct",
+    "n": 7,
+    "sigla": "CT"
+  },
+  {
+    "id": "sigla-cu",
+    "n": 8,
+    "sigla": "CU"
+  },
+  {
+    "id": "sigla-c0",
+    "n": 9,
+    "sigla": "C0"
+  },
+  {
+    "id": "d0670113-db22-4acf-b7df-22309717f856",
+    "n": 10,
+    "sigla": "DV0"
+  }
+]

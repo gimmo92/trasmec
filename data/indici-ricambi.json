@@ -1,0 +1,102 @@
+[
+  {
+    "id": "61122a6f-0e69-4f57-8a44-c7e075f2d067",
+    "n": 1,
+    "indice": "SECTOR",
+    "descrizioneOfferta": "KIT SETTORI",
+    "gestione": "Composto",
+    "sparePartsList": "SI",
+    "strutturaDescrizione": " \"Sector\" più nome indice del pezzo ad es \"Sector AL100CLC\"",
+    "note": ""
+  },
+  {
+    "id": "aed96fb1-631c-4647-8141-c6bc350c3aeb",
+    "n": 2,
+    "indice": "TM",
+    "descrizioneOfferta": "SUPPORTI 1",
+    "gestione": "Composto + gruppo cuscinetti",
+    "sparePartsList": "SI",
+    "strutturaDescrizione": "\"Support\" più nome indice del pezzo ad es \"Support TM140CLC\"",
+    "note": ""
+  },
+  {
+    "id": "84ce7bd9-147f-41d0-b591-95a46fe40c6c",
+    "n": 3,
+    "indice": "SN  FN  UKT",
+    "descrizioneOfferta": "SUPPORTI 2",
+    "gestione": "Unico + gruppo cuscinetti",
+    "sparePartsList": "SI",
+    "strutturaDescrizione": "\"Support\" più nome indice del pezzo ad es \"Support TM140CLC\"",
+    "note": ""
+  },
+  {
+    "id": "d38c3777-2333-468b-9da2-50fe545b4ca5",
+    "n": 4,
+    "indice": "TRASPORT CHAIN CONVEYING CHAIN",
+    "descrizioneOfferta": "CATENA",
+    "gestione": "Gestione separata",
+    "sparePartsList": "SI",
+    "strutturaDescrizione": "Chain {modello}",
+    "note": ""
+  },
+  {
+    "id": "058cc87c-cf98-46da-b888-b4eeab519ebb",
+    "n": 4,
+    "indice": "TP BELT Tappeto",
+    "descrizioneOfferta": "TAPPETO",
+    "gestione": "Unico",
+    "sparePartsList": "NO",
+    "strutturaDescrizione": "",
+    "note": ""
+  },
+  {
+    "id": "da5c9750-2379-456a-8c4b-9e1f0d55ef54",
+    "n": 5,
+    "indice": "SPAZ",
+    "descrizioneOfferta": "KIT SPAZZOLE",
+    "gestione": "Composto",
+    "sparePartsList": "SI",
+    "strutturaDescrizione": "KIT spazzole",
+    "note": ""
+  },
+  {
+    "id": "e7035446-6ddc-472d-a744-154919157c43",
+    "n": 6,
+    "indice": "SPRINKLER",
+    "descrizioneOfferta": "SPRINKLERS",
+    "gestione": "Unico",
+    "sparePartsList": "SI",
+    "strutturaDescrizione": "",
+    "note": ""
+  },
+  {
+    "id": "02b3d426-2c05-42a8-bc86-3db35f950071",
+    "n": 7,
+    "indice": "D135 TK-R",
+    "descrizioneOfferta": "Supporti 3",
+    "gestione": "Composto + gruppo cuscinetti",
+    "sparePartsList": "SI",
+    "strutturaDescrizione": "Support {modello}",
+    "note": "D135 in distinta = TKK Ø=135 in listino"
+  },
+  {
+    "id": "c8f0e1a2-9b3d-4e5f-a617-18d29c40b7e8",
+    "n": 8,
+    "indice": "SCRAPER",
+    "descrizioneOfferta": "SCRAPER",
+    "gestione": "Unico",
+    "sparePartsList": "SI",
+    "strutturaDescrizione": "",
+    "note": ""
+  },
+  {
+    "id": "c6b2abb3-9bb8-4c44-b995-4642036ebc27",
+    "n": 9,
+    "indice": "UCF",
+    "descrizioneOfferta": "UCFL",
+    "gestione": "Unico",
+    "sparePartsList": "SI",
+    "strutturaDescrizione": "UCFL più numero",
+    "note": ""
+  }
+]
