@@ -31,7 +31,7 @@ interface Cell {
 const DATA_FILE = path.join(process.cwd(), "data", "disegni.json");
 const CLOUD_PATH = "config/disegni.json";
 /** Va alzato quando cambia la lettura, così i disegni già visti vengono riletti. */
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;
 
 let memory: Record<string, DrawingInfo & { key: string }> | null = null;
 
@@ -46,11 +46,11 @@ function num(value: string): number {
   return Number(value.replace(",", "."));
 }
 
+/** "2 x 45440mm" vale 45,44 m: il moltiplicatore del disegno non si applica. */
 function toMeters(match: RegExpMatchArray): number {
-  const times = match[1] ? Number(match[1]) : 1;
   const value = num(match[2]);
   const meters = /^mm$/i.test(match[3]) ? value / 1000 : value;
-  return Math.round(times * meters * 1000) / 1000;
+  return Math.round(meters * 1000) / 1000;
 }
 
 /** Pale, scraper e anello catena da righe già divise in celle. */
@@ -213,7 +213,7 @@ Rispondi solo con JSON, senza testo prima o dopo:
  "items": [{"code": "codice o null", "description": "descrizione", "qty": numero}]}
 
 chainRing: la quantità della voce "chain ring" / "anello catena" nell'elenco parti, convertita in metri
-(es. "2 x 45440mm" = 90.88). Se quella voce non c'è, usa lo sviluppo della catena scritto come
+senza applicare moltiplicatori come "2 x" (es. "2 x 45440mm" = 45.44). Se quella voce non c'è, usa lo sviluppo della catena scritto come
 "DEVELOPMENT" o "SVILUPPO" (es. "DEVELOPMENT : 37,062m" = 37.062). Se non c'è nessuno dei due, null.
 pitchMm: il passo della maglia della catena in mm, cioè la distanza tra i due occhielli (perni) di una
 maglia, come quotato nel disegno (es. 142). Se non è quotato, null.
