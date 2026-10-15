@@ -468,12 +468,19 @@ function setInstalled(line: ProposalLine, qty: number): void {
   if (line.recommendedQty !== null) line.recommendedQty = recommendedFromInstalled(qty);
 }
 
+/** 10% della metratura, arrotondato per eccesso a un numero intero di maglie. */
+function chainStorage(installed: number, um: string, pitchMm: number): { qty: number; links: number } {
+  const mm = /^mm$/i.test(um) ? installed : installed * 1000;
+  const links = Math.max(1, Math.ceil((mm * 0.1) / pitchMm - 1e-9));
+  const stock = links * pitchMm;
+  return { qty: /^mm$/i.test(um) ? stock : Math.round(stock) / 1000, links };
+}
+
 /**
- * Catene in metri/millimetri: metratura dal "chain ring" del disegno della commessa.
- * Pale e scraper del disegno entrano in offerta con la quantità del disegno.
+ * Catene in metri/millimetri: metratura dal "chain ring" del disegno della commessa,
+ * scorta al passo maglia. Pale e scraper del disegno entrano con la quantità del disegno.
  */
 function applyDrawings(spares: ProposalLine[], warnings: string[], infos: DrawingInfo[]): void {
-  if (!infos.length) return;
   for (const info of infos) if (info.warning) warnings.push(`${info.file}: ${info.warning}`);
 
   const chainLines = spares.filter(
@@ -491,9 +498,27 @@ function applyDrawings(spares: ProposalLine[], warnings: string[], infos: Drawin
         `Catena ${line.code}: quantità installata dal disegno ${ring.file} (${ring.chainRing.text} = ${fmt(ring.chainRing.meters)} m), in distinta ${fmt(before)} ${line.um}.`
       );
     }
-  } else if (chainLines.length) {
+  } else if (chainLines.length && infos.length) {
     warnings.push(
       `Voce "chain ring" non trovata nel disegno (${infos.map((i) => i.file).join(", ")}): tenuta la metratura della distinta.`
+    );
+  }
+
+  const drawingPitch = infos.find((i) => i.pitchMm);
+  for (const line of chainLines) {
+    const typePitch = Number(
+      `${line.descriptionEN ?? ""} ${line.descriptionIT ?? ""}`.match(/\b(\d{3})\d{2}\s*MN\b/i)?.[1] ?? 0
+    );
+    const pitch = drawingPitch?.pitchMm ?? typePitch;
+    if (!pitch) {
+      warnings.push(`Catena ${line.code}: passo maglia non trovato, scorta al 10% arrotondata al metro.`);
+      continue;
+    }
+    const stock = chainStorage(line.installedQty, line.um ?? "MT", pitch);
+    line.recommendedQty = stock.qty;
+    const from = drawingPitch ? `dal disegno ${drawingPitch.file}` : "dal tipo catena, non quotato nel disegno";
+    warnings.push(
+      `Catena ${line.code}: scorta ${fmt(stock.qty)} ${line.um} = 10% arrotondato a ${stock.links} maglie da ${fmt(pitch)} mm (passo ${from}).`
     );
   }
 

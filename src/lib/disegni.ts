@@ -16,6 +16,8 @@ export interface DrawingInfo {
   file: string;
   /** Metratura dell'anello catena ("chain ring"), già convertita in metri. */
   chainRing?: { meters: number; text: string };
+  /** Passo della maglia: distanza tra due occhielli, in mm. */
+  pitchMm?: number;
   extras: DrawingItem[];
   source: "dwg" | "pdf" | "claude";
   warning?: string;
@@ -29,7 +31,7 @@ interface Cell {
 const DATA_FILE = path.join(process.cwd(), "data", "disegni.json");
 const CLOUD_PATH = "config/disegni.json";
 /** Va alzato quando cambia la lettura, così i disegni già visti vengono riletti. */
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 
 let memory: Record<string, DrawingInfo & { key: string }> | null = null;
 
@@ -55,11 +57,15 @@ function toMeters(match: RegExpMatchArray): number {
 export function readPartsRows(rows: Cell[][], qtyX?: number): Omit<DrawingInfo, "file" | "source"> {
   const extras: DrawingItem[] = [];
   let chainRing: DrawingInfo["chainRing"];
+  let pitchMm: number | undefined;
 
   for (const cells of rows) {
     const texts = cells.map((c) => c.text.trim()).filter(Boolean);
     const joined = texts.join(" ");
     if (!joined) continue;
+
+    const pitch = joined.match(/\b(?:pitch|passo(?:\s*maglia)?)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*mm\b/i);
+    if (!pitchMm && pitch) pitchMm = num(pitch[1]);
 
     if (!chainRing && CHAIN_RING.test(joined) && !/weight|peso/i.test(joined)) {
       const cell = texts.map((t) => t.match(LENGTH_CELL)).find(Boolean) ?? joined.match(LENGTH_ANY);
@@ -80,7 +86,7 @@ export function readPartsRows(rows: Cell[][], qtyX?: number): Omit<DrawingInfo, 
       extras.push({ code, description: description || joined, qty });
     }
   }
-  return { chainRing, extras };
+  return { chainRing, pitchMm, extras };
 }
 
 function cleanMText(raw: string): string {
@@ -105,12 +111,13 @@ interface DwgEntity {
   type: string;
   handle?: number | string;
   text?: string;
+  measurement?: number;
   textHeight?: number;
   insertionPoint?: { x: number; y: number };
   startPoint?: { x: number; y: number };
 }
 
-async function dwgTexts(filePath: string): Promise<DwgText[]> {
+async function dwgTexts(filePath: string): Promise<{ texts: DwgText[]; dims: number[] }> {
   const { LibreDwg, Dwg_File_Type } = await import("@mlightcad/libredwg-web");
   const wasmDir = path.join(process.cwd(), "node_modules", "@mlightcad", "libredwg-web", "wasm") + path.sep;
   const lib = await LibreDwg.create(wasmDir);
@@ -126,9 +133,11 @@ async function dwgTexts(filePath: string): Promise<DwgText[]> {
       tables?: { BLOCK_RECORD?: { entries?: { name: string; entities?: DwgEntity[] }[] } };
     };
     const out: DwgText[] = [];
+    const dims: number[] = [];
     const seen = new Set<string>();
     const add = (block: string, entities: DwgEntity[] | undefined) => {
       for (const e of entities ?? []) {
+        if (/DIMENSION/i.test(e.type) && Number(e.measurement) > 0) dims.push(Number(e.measurement));
         if (e.type !== "MTEXT" && e.type !== "TEXT" && e.type !== "ATTRIB") continue;
         const text = cleanMText(String(e.text ?? ""));
         const p = e.insertionPoint ?? e.startPoint;
@@ -144,7 +153,7 @@ async function dwgTexts(filePath: string): Promise<DwgText[]> {
       if (/^\*model_space$/i.test(record.name)) continue;
       add(record.name, record.entities);
     }
-    return out;
+    return { texts: out, dims };
   } finally {
     lib.dwg_free(dwg);
   }
@@ -173,25 +182,41 @@ function dwgRows(texts: DwgText[]): { rows: Cell[][]; qtyX?: number }[] {
 }
 
 async function readDwg(filePath: string): Promise<Omit<DrawingInfo, "file" | "source">> {
-  const tables = dwgRows(await dwgTexts(filePath));
+  const { texts, dims } = await dwgTexts(filePath);
   const extras: DrawingItem[] = [];
   let chainRing: DrawingInfo["chainRing"];
-  for (const table of tables) {
+  let pitchMm: number | undefined;
+  for (const table of dwgRows(texts)) {
     const res = readPartsRows(table.rows, table.qtyX);
     chainRing ??= res.chainRing;
+    pitchMm ??= res.pitchMm;
     extras.push(...res.extras);
   }
-  return { chainRing, extras };
+  // Passo maglia: le prime 3 cifre del tipo catena (14226 → 142), se quotato nel disegno.
+  if (!pitchMm) {
+    for (const t of texts) {
+      const m = t.text.match(/\b(\d{3})\d{2}\s*MN\b/i);
+      const candidate = m ? Number(m[1]) : 0;
+      if (candidate && dims.some((d) => Math.abs(d - candidate) < 0.5)) {
+        pitchMm = candidate;
+        break;
+      }
+    }
+  }
+  return { chainRing, pitchMm, extras };
 }
 
 const VISION_PROMPT = `Questo è un disegno tecnico Trasmec di una catena o di una macchina.
 Rispondi solo con JSON, senza testo prima o dopo:
 {"chainRing": {"text": "testo esatto della quantità", "meters": numero} | null,
+ "pitchMm": numero | null,
  "items": [{"code": "codice o null", "description": "descrizione", "qty": numero}]}
 
 chainRing: la quantità della voce "chain ring" / "anello catena" nell'elenco parti, convertita in metri
 (es. "2 x 45440mm" = 90.88). Se quella voce non c'è, usa lo sviluppo della catena scritto come
 "DEVELOPMENT" o "SVILUPPO" (es. "DEVELOPMENT : 37,062m" = 37.062). Se non c'è nessuno dei due, null.
+pitchMm: il passo della maglia della catena in mm, cioè la distanza tra i due occhielli (perni) di una
+maglia, come quotato nel disegno (es. 142). Se non è quotato, null.
 items: solo le righe dell'elenco parti che parlano di pale (pala, pale, paddle) o scraper/scrape,
 con la quantità scritta nel disegno. Ometti le righe con quantità vuota o "-". Non inventare valori.`;
 
@@ -221,10 +246,13 @@ async function readPdfWithClaude(filePath: string): Promise<Omit<DrawingInfo, "f
   if (start < 0 || end <= start) throw new Error("Risposta Claude senza JSON");
   const parsed = JSON.parse(text.slice(start, end + 1)) as {
     chainRing?: { text?: string; meters?: number } | null;
+    pitchMm?: number | null;
     items?: { code?: string | null; description?: string; qty?: number }[];
   };
   const meters = Number(parsed.chainRing?.meters);
+  const pitch = Number(parsed.pitchMm);
   return {
+    pitchMm: Number.isFinite(pitch) && pitch > 0 ? pitch : undefined,
     chainRing:
       Number.isFinite(meters) && meters > 0
         ? { meters, text: String(parsed.chainRing?.text ?? `${meters} m`) }

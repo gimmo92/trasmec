@@ -24,7 +24,7 @@ type LineKind = "spares" | "motors" | "sensors";
 
 function withUnit(qty: number | null | undefined, um?: string): string {
   if (qty === null || qty === undefined) return "";
-  return /^(m|mt|mm)$/i.test(um ?? "") ? `${qty} ${um!.toUpperCase()}` : String(qty);
+  return `${qty.toLocaleString("it-IT", { maximumFractionDigits: 3 })} ${(um || "NR").toUpperCase()}`;
 }
 
 function LinesTable({
