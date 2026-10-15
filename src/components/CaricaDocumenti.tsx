@@ -96,12 +96,12 @@ export default function CaricaDocumenti({
         }}
       >
         {busy ? "Classificazione…" : "Trascina qui i file, oppure sceglili"}
-        <span>PDF ordine e Excel distinta. Li riconosco dal contenuto.</span>
+        <span>Ordini PDF, distinte Excel, liste ML/SL e disegni PDF o DWG. Li riconosco dal contenuto.</span>
       </button>
       <input
         ref={inputRef}
         type="file"
-        accept=".pdf,.xlsx,.xlsm,.xls,application/pdf"
+        accept=".pdf,.xlsx,.xlsm,.xls,.dwg,application/pdf"
         multiple
         hidden
         onChange={(event) => void send(Array.from(event.target.files ?? []))}

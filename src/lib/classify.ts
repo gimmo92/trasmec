@@ -22,7 +22,7 @@ interface CacheEntry extends ClassifiedDoc {
 }
 
 /** Va alzato quando cambiano le regole, così i file già visti vengono riclassificati. */
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 
 const DATA_FILE = path.join(process.cwd(), "data", "classificazione.json");
 const CLOUD_PATH = "config/classificazione.json";
@@ -38,7 +38,8 @@ function orderCodes(text: string): string[] {
 export function kindFromName(name: string): ClassifiedDoc {
   const n = name.toLowerCase();
   const code = jobCode(name);
-  if (n.endsWith(".pdf")) return { kind: "altro" };
+  if (n.endsWith(".dwg")) return { kind: "disegno", code };
+  if (n.endsWith(".pdf")) return code ? { kind: "disegno", code } : { kind: "altro" };
   if (n.includes("-ml") || n.includes("motor")) return { kind: "lista-motori" };
   if (n.includes("-sl") || n.includes("sensor")) return { kind: "lista-sensori" };
   if (n.includes("spare") || n.includes("listino") || n.includes("price")) return { kind: "listino" };
@@ -122,6 +123,11 @@ async function classifyPdf(filePath: string, name: string): Promise<ClassifiedDo
   const codes = orderCodes(text);
   if (/AFTER\s*SALES/i.test(text) || /NR\.\s*DOCUMENTO/i.test(text)) {
     return { kind: "ordine", code: codes[0], codes };
+  }
+  // Disegno: codice commessa nel titolo, senza le voci di un ordine.
+  const drawingCode = jobCode(name);
+  if (drawingCode && !/ORDER\s+CONFIRMATION/i.test(text)) {
+    return { kind: "disegno", code: drawingCode };
   }
   if (codes.length && /COMMESSA|ORDINE|ORDER\s+CONFIRMATION/i.test(text)) {
     return { kind: "ordine", code: codes[0], codes };

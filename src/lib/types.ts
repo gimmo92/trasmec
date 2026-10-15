@@ -66,7 +66,15 @@ export interface DocumentoFile {
   ext: string;
   sizeBytes: number;
   modified: string; // ISO
-  kind: "distinta" | "ordine" | "lista-motori" | "lista-sensori" | "listino" | "template" | "altro";
+  kind:
+    | "distinta"
+    | "ordine"
+    | "disegno"
+    | "lista-motori"
+    | "lista-sensori"
+    | "listino"
+    | "template"
+    | "altro";
   /** Codice commessa BE####, se riconosciuto dentro il file. */
   code?: string;
   /** Codici BE#### citati dall'ordine (dopo AFTER SALES, se c'è). */
@@ -76,6 +84,7 @@ export interface DocumentoFile {
 export const DOC_KIND_LABEL: Record<DocumentoFile["kind"], string> = {
   distinta: "distinta",
   ordine: "ordine",
+  disegno: "disegno",
   "lista-motori": "lista motori",
   "lista-sensori": "lista sensori",
   listino: "listino",
