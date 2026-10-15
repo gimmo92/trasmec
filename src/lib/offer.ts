@@ -601,8 +601,13 @@ export async function buildSparePartsOffer(
     slDocs.flatMap((file) => parseSensorList(resolveDocumento(file.path)))
   );
 
+  // "TP" nel nome = scheda tappeto, non una catena
   const drawingDocs = docs.filter(
-    (d) => d.kind === "disegno" && d.code && allowed.has(d.code.toUpperCase())
+    (d) =>
+      d.kind === "disegno" &&
+      d.code &&
+      allowed.has(d.code.toUpperCase()) &&
+      !/(^|[^a-z])tp([^a-z]|$)/i.test(d.name)
   );
   const drawings = await readDrawings(
     drawingDocs.map((d) => ({ name: d.name, full: resolveDocumento(d.path) }))
