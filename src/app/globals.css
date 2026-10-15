@@ -51,22 +51,44 @@ a {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-width: 180px;
+  min-width: 160px;
+  flex-shrink: 0;
 }
 
 .tabs {
   display: flex;
-  align-items: stretch;
-  overflow-x: auto;
+  align-items: flex-start;
   min-width: 0;
   flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: #6b7689 transparent;
+}
+
+.tabs::-webkit-scrollbar {
+  height: 8px;
+}
+
+.tabs::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tabs::-webkit-scrollbar-thumb {
+  background: #6b7689;
+  border-radius: 8px;
 }
 
 .tab {
   border: 0;
   border-radius: 0;
   background: transparent;
-  padding: 14px 22px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 16px;
   color: var(--muted);
   font-weight: 600;
   border-bottom: 2px solid transparent;
@@ -228,8 +250,22 @@ a {
 }
 
 .archivio .upload-box {
+  width: 100%;
+  max-width: none;
+  margin: 0;
   padding: 16px 0 0;
-  max-width: 720px;
+}
+
+.archivio .dropzone {
+  align-items: flex-start;
+  text-align: left;
+  padding: 16px 18px;
+}
+
+.archivio .status {
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
 }
 
 .order-filters {
@@ -1305,6 +1341,7 @@ button.danger:hover:not(:disabled) {
   gap: 8px;
   padding: 0 12px;
   border-left: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .nav-user > span {
