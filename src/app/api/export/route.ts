@@ -277,9 +277,15 @@ export async function POST(req: NextRequest) {
         row.getCell(11).font = { size: 10, italic: true, color: { argb: "FF999999" } };
         for (let col = 5; col <= 25; col++) row.getCell(col).border = box;
         r++;
-        continue;
+      } else {
+        for (const l of lines) writeLine(m, l, machineIndex);
       }
-      for (const l of lines) writeLine(m, l, machineIndex);
+      // Linea rossa di fine commessa
+      const last = ws.getRow(r - 1);
+      for (let col = 5; col <= 25; col++) {
+        const c = last.getCell(col);
+        c.border = { ...c.border, bottom: { style: "medium", color: { argb: "FFE00000" } } };
+      }
     }
 
     const lastDataRow = r - 1;
