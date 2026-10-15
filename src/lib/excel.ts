@@ -220,8 +220,10 @@ export function extractConfigBom(grids: Record<string, Grid>): {
     if (seenConveyingChain) {
       const code = cellStr(row[3]);
       const meters = parseNum(row[2]);
-      if (/^CT\d+/i.test(code) && meters && meters > 0) {
-        const link = cellStr(row[5]);
+      // Codice assieme: CT#### (TKK) oppure numero disegno 012.25.04.12.02.13 (TK)
+      const isAssembly = /^CT\d+/i.test(code) || /^\d{3}(\.\d{2}){5}$/.test(code);
+      if (isAssembly && meters && meters > 0) {
+        const link = [cellStr(row[5]), cellStr(row[6])].filter(Boolean).join(" ");
         const pin = cellStr(row[7]);
         chainMeters = meters;
         chainLinks = parseNum(row[11]) ?? 0;

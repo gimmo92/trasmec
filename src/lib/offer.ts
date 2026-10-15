@@ -16,6 +16,7 @@ import { refineOfferWithClaude } from "./claudeoffer";
 import { prepareApp } from "./prepare";
 import { isJobCode, jobCode } from "./jobcode";
 import { readArchivio } from "./archivio";
+import { readDrawings, type DrawingInfo } from "./disegni";
 
 export interface BuildOfferOptions {
   /** File dell'ordine da cui generare. Obbligatorio. */
@@ -458,6 +459,75 @@ function linesFromGroup(
  *  - + gruppo cuscinetti: sotto l'assieme, cuscinetti gialli della scheda listino
  *  - poi motori (ML, solo codice MR…) e sensori (SL)
  */
+function fmt(value: number): string {
+  return value.toLocaleString("it-IT", { maximumFractionDigits: 3 });
+}
+
+function setInstalled(line: ProposalLine, qty: number): void {
+  line.installedQty = qty;
+  if (line.recommendedQty !== null) line.recommendedQty = recommendedFromInstalled(qty);
+}
+
+/**
+ * Catene in metri/millimetri: metratura dal "chain ring" del disegno della commessa.
+ * Pale e scraper del disegno entrano in offerta con la quantità del disegno.
+ */
+function applyDrawings(spares: ProposalLine[], warnings: string[], infos: DrawingInfo[]): void {
+  if (!infos.length) return;
+  for (const info of infos) if (info.warning) warnings.push(`${info.file}: ${info.warning}`);
+
+  const chainLines = spares.filter(
+    (l) =>
+      /chain|catena/i.test(`${l.descriptionEN ?? ""} ${l.descriptionIT ?? ""} ${l.notes ?? ""}`) &&
+      /^(m|mt|mm)$/i.test((l.um ?? "").trim())
+  );
+  const ring = infos.find((i) => i.chainRing);
+  if (chainLines.length && ring?.chainRing) {
+    for (const line of chainLines) {
+      const before = line.installedQty;
+      const qty = /^mm$/i.test(line.um ?? "") ? ring.chainRing.meters * 1000 : ring.chainRing.meters;
+      setInstalled(line, qty);
+      warnings.push(
+        `Catena ${line.code}: quantità installata dal disegno ${ring.file} (${ring.chainRing.text} = ${fmt(ring.chainRing.meters)} m), in distinta ${fmt(before)} ${line.um}.`
+      );
+    }
+  } else if (chainLines.length) {
+    warnings.push(
+      `Voce "chain ring" non trovata nel disegno (${infos.map((i) => i.file).join(", ")}): tenuta la metratura della distinta.`
+    );
+  }
+
+  const seen = new Set<string>();
+  for (const info of infos) {
+    for (const extra of info.extras) {
+      const key = (extra.code || extra.description).toUpperCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const code = extra.code?.toUpperCase();
+      const existing = code
+        ? spares.find((l) => l.code.toUpperCase() === code || l.bomCode?.toUpperCase() === code)
+        : undefined;
+      if (existing) {
+        if (existing.installedQty !== extra.qty) {
+          warnings.push(
+            `${existing.code}: quantità installata dal disegno ${info.file} (${fmt(extra.qty)}), in distinta ${fmt(existing.installedQty)}.`
+          );
+        }
+        setInstalled(existing, extra.qty);
+        continue;
+      }
+      spares.push(
+        toLine({
+          code: extra.code || "-",
+          description: extra.description,
+          installed: extra.qty,
+          notes: "DISEGNO",
+        })
+      );
+    }
+  }
+}
+
 export async function buildSparePartsOffer(
   opts: BuildOfferOptions = {}
 ): Promise<Offer> {
@@ -531,6 +601,13 @@ export async function buildSparePartsOffer(
     slDocs.flatMap((file) => parseSensorList(resolveDocumento(file.path)))
   );
 
+  const drawingDocs = docs.filter(
+    (d) => d.kind === "disegno" && d.code && allowed.has(d.code.toUpperCase())
+  );
+  const drawings = await readDrawings(
+    drawingDocs.map((d) => ({ name: d.name, full: resolveDocumento(d.path) }))
+  );
+
   const machines: MachineSection[] = [];
 
   for (const item of order.includedItems) {
@@ -560,6 +637,15 @@ export async function buildSparePartsOffer(
       spares.push(...res.lines);
       warnings.push(...res.warnings);
     }
+
+    applyDrawings(
+      spares,
+      warnings,
+      drawingDocs
+        .filter((d) => d.code?.toUpperCase() === base)
+        .map((d) => drawings.get(d.name))
+        .filter((info): info is DrawingInfo => Boolean(info))
+    );
 
     const section: MachineSection = {
       itemCode: base,

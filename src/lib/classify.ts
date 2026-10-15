@@ -22,7 +22,7 @@ interface CacheEntry extends ClassifiedDoc {
 }
 
 /** Va alzato quando cambiano le regole, così i file già visti vengono riclassificati. */
-const CACHE_VERSION = 4;
+const CACHE_VERSION = 5;
 
 const DATA_FILE = path.join(process.cwd(), "data", "classificazione.json");
 const CLOUD_PATH = "config/classificazione.json";
@@ -125,7 +125,8 @@ async function classifyPdf(filePath: string, name: string): Promise<ClassifiedDo
     return { kind: "ordine", code: codes[0], codes };
   }
   // Disegno: codice commessa nel titolo, senza le voci di un ordine.
-  const drawingCode = jobCode(name);
+  const titleCode = text.match(/(?:job\s*nr|numero\s*commessa)\.?\s*:?\s*(B[A-Z]\d{4})/i)?.[1];
+  const drawingCode = jobCode(name) ?? titleCode?.toUpperCase();
   if (drawingCode && !/ORDER\s+CONFIRMATION/i.test(text)) {
     return { kind: "disegno", code: drawingCode };
   }
