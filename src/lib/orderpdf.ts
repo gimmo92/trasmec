@@ -16,7 +16,7 @@ export interface ParsedOrder {
 
 /** Node su Vercel non ha DOMMatrix: pdfjs lo usa anche solo per estrarre il testo. */
 function installDomMatrix() {
-  const g = globalThis as typeof globalThis & { DOMMatrix?: unknown };
+  const g = globalThis as { DOMMatrix?: unknown };
   if (typeof g.DOMMatrix !== "undefined") return;
   class DOMMatrixPolyfill {
     a = 1;
