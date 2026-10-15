@@ -42,7 +42,7 @@ export function sorgenteRoot(): string {
 }
 
 function cell(row: Grid[number] | undefined, index: number): string {
-  const value = row?.[index];
+  const value = row?.[index] as string | number | Date | null | undefined;
   if (value === null || value === undefined) return "";
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   return String(value).trim();
