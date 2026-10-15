@@ -66,8 +66,20 @@ export interface DocumentoFile {
   ext: string;
   sizeBytes: number;
   modified: string; // ISO
-  kind: "distinta" | "lista-motori" | "lista-sensori" | "listino" | "template" | "altro";
+  kind: "distinta" | "ordine" | "lista-motori" | "lista-sensori" | "listino" | "template" | "altro";
+  /** Codice commessa BE####, se riconosciuto dentro il file. */
+  code?: string;
 }
+
+export const DOC_KIND_LABEL: Record<DocumentoFile["kind"], string> = {
+  distinta: "distinta",
+  ordine: "ordine",
+  "lista-motori": "lista motori",
+  "lista-sensori": "lista sensori",
+  listino: "listino",
+  template: "template",
+  altro: "da verificare",
+};
 
 /** Categoria di una riga di proposta ricambi. */
 export type LineCategory = "spare" | "motor" | "sensor";

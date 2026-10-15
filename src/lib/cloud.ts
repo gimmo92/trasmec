@@ -87,6 +87,18 @@ export async function uploadFile(objectPath: string, filePath: string): Promise<
   if (error) throw new Error(`Upload ${objectPath}: ${error.message}`);
 }
 
+/** URL firmato per caricare un file dal browser senza passare dal limite della funzione. */
+export async function signedUploadUrl(objectPath: string): Promise<string> {
+  await ensureBucket();
+  const { data, error } = await supabaseAdmin()
+    .storage.from(CLOUD_BUCKET)
+    .createSignedUploadUrl(objectPath, { upsert: true });
+  if (error || !data?.signedUrl) {
+    throw new Error(error?.message || "URL di caricamento non disponibile");
+  }
+  return data.signedUrl;
+}
+
 export async function downloadFile(objectPath: string): Promise<Buffer | null> {
   const sb = supabaseAdmin();
   const { data, error } = await sb.storage.from(CLOUD_BUCKET).download(objectPath);

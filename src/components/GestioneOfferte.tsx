@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { DocumentoFile, MachineSection, Offer, ProposalLine } from "@/lib/types";
+import CaricaDocumenti from "@/components/CaricaDocumenti";
+import { DOC_KIND_LABEL, type DocumentoFile, type MachineSection, type Offer, type ProposalLine } from "@/lib/types";
 import { compoundFillIndex, isNonSeSensorLine } from "@/lib/highlight";
 
 interface Health {
@@ -117,29 +118,34 @@ export default function GestioneOfferte() {
   const [docs, setDocs] = useState<DocumentoFile[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loadingDocs, setLoadingDocs] = useState(true);
+  const [cloudDocs, setCloudDocs] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [offer, setOffer] = useState<Offer | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+
+  const reloadDocs = useCallback(async () => {
+    const res = await fetch("/api/documenti");
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(String(data.error || "Errore documenti"));
+    setDocs(data.files ?? []);
+    setCloudDocs(Boolean(data.supabase));
+  }, []);
 
   useEffect(() => {
     fetch("/api/health")
       .then((r) => r.json())
       .then(setHealth)
       .catch(() => setHealth(null));
-    fetch("/api/documenti")
-      .then((r) => r.json())
-      .then((d) => setDocs(d.files ?? []))
-      .catch((e) => setError(String(e)))
+    reloadDocs()
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoadingDocs(false));
-  }, []);
+  }, [reloadDocs]);
 
-  const distinte = useMemo(
-    () => docs.filter((d) => d.kind === "distinta" && /^BE\d{4}/i.test(d.name)),
-    [docs]
-  );
+  const ordini = useMemo(() => docs.filter((d) => d.kind === "ordine"), [docs]);
+  const distinte = useMemo(() => docs.filter((d) => d.kind === "distinta"), [docs]);
   const altri = useMemo(
-    () => docs.filter((d) => !(d.kind === "distinta" && /^BE\d{4}/i.test(d.name))),
+    () => docs.filter((d) => d.kind !== "ordine" && d.kind !== "distinta"),
     [docs]
   );
 
@@ -223,15 +229,38 @@ export default function GestioneOfferte() {
             : "API key Claude mancante (.env.local)"}
         </div>
 
-        <div className="section-title">
-          Distinte base ({distinte.length}) — opzionale
-        </div>
+        <CaricaDocumenti
+          cloud={cloudDocs}
+          onUploaded={async () => {
+            try {
+              await reloadDocs();
+            } catch (e) {
+              setError(e instanceof Error ? e.message : String(e));
+            }
+          }}
+        />
         <div className="hint">
-          Lascia deselezionato per usare tutti gli item del documento d&apos;ordine
-          (dopo AFTER SALES).
+          Le distinte si possono limitare con la spunta. Senza spunta l&apos;offerta usa
+          tutti gli item dell&apos;ordine dopo AFTER SALES.
         </div>
         <div className="doc-list">
           {loadingDocs && <div className="status">Caricamento…</div>}
+
+          <div className="section-title">Ordini ({ordini.length})</div>
+          {ordini.length === 0 && !loadingDocs && (
+            <div className="hint">Nessun ordine riconosciuto.</div>
+          )}
+          {ordini.map((d) => (
+            <div key={d.path} className="doc static">
+              <div className="meta">
+                <div className="name">{d.name}</div>
+                <div className="sub">{formatSize(d.sizeBytes)}</div>
+              </div>
+              <span className="badge ordine">ordine</span>
+            </div>
+          ))}
+
+          <div className="section-title">Distinte base ({distinte.length})</div>
           {distinte.map((d) => (
             <div
               key={d.path}
@@ -241,7 +270,10 @@ export default function GestioneOfferte() {
               <input type="checkbox" checked={selected.has(d.path)} readOnly />
               <div className="meta">
                 <div className="name">{d.name}</div>
-                <div className="sub">{formatSize(d.sizeBytes)}</div>
+                <div className="sub">
+                  {d.code && !d.name.toUpperCase().includes(d.code) ? `${d.code} · ` : ""}
+                  {formatSize(d.sizeBytes)}
+                </div>
               </div>
               <span className="badge distinta">distinta</span>
             </div>
@@ -256,7 +288,7 @@ export default function GestioneOfferte() {
                     <div className="name">{d.name}</div>
                     <div className="sub">{formatSize(d.sizeBytes)}</div>
                   </div>
-                  <span className={`badge ${d.kind}`}>{d.kind}</span>
+                  <span className={`badge ${d.kind}`}>{DOC_KIND_LABEL[d.kind]}</span>
                 </div>
               ))}
             </>

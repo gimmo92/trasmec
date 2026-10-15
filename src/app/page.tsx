@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import AccountBar from "@/components/AccountBar";
 import GestioneOfferte from "@/components/GestioneOfferte";
 import IndiciRicambi from "@/components/IndiciRicambi";
 import IstruzioniPersonalizzate from "@/components/IstruzioniPersonalizzate";
@@ -61,6 +62,7 @@ export default function Home() {
             Personalizza istruzioni
           </button>
         </div>
+        <AccountBar />
       </nav>
       <section
         role="tabpanel"

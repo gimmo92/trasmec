@@ -65,7 +65,7 @@ function installDomMatrix() {
 }
 
 /** Estrae il testo dal PDF usando pdf-parse (v2). */
-async function extractPdfText(filePath: string): Promise<string> {
+export async function extractPdfText(filePath: string): Promise<string> {
   installDomMatrix();
   const buf = fs.readFileSync(filePath);
   // Carica il worker nello stesso processo. Su Vercel il fake worker di pdfjs

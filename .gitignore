@@ -28,3 +28,7 @@ next-env.d.ts
 
 # offerte generate
 /output
+
+# account locali (hash password) e cache di classificazione
+/data/utenti.json
+/data/classificazione.json

@@ -1,5 +1,5 @@
-import type { BomRow, MachineSection, Offer, ProposalLine, SpareIndexRow } from "./types";
-import { listDocumenti, resolveDocumento } from "./documenti";
+import type { BomRow, DocumentoFile, MachineSection, Offer, ProposalLine, SpareIndexRow } from "./types";
+import { listDocumentiClassificati, resolveDocumento } from "./documenti";
 import { parseBomForOffer, parseNum, recommendedFromInstalled, isSparePartCode } from "./excel";
 import { parseMotorList, parseSensorList, groupByJobBase } from "./motorsensor";
 import { parseOrderPdf } from "./orderpdf";
@@ -19,14 +19,14 @@ export interface BuildOfferOptions {
   restrictPaths?: string[];
 }
 
-function mapBomFiles(): Map<string, string> {
+function mapBomFiles(docs: DocumentoFile[]): Map<string, string> {
   const map = new Map<string, string>();
-  for (const d of listDocumenti()) {
-    if (!/\.(xlsx|xlsm)$/i.test(d.name)) continue;
-    if (/-ML\.xlsx$/i.test(d.name) || /-SL\.xlsx$/i.test(d.name)) continue;
-    const m = d.name.match(/^BE\d{4}/i);
-    if (!m) continue;
-    const base = m[0].toUpperCase();
+  for (const d of docs) {
+    if (d.kind !== "distinta") continue;
+    if (!/\.(xlsx|xlsm|xls)$/i.test(d.name)) continue;
+    const fromName = d.name.match(/BE\d{4}/i)?.[0];
+    const base = (d.code || fromName || "").toUpperCase();
+    if (!/^BE\d{4}$/.test(base)) continue;
     if (!map.has(base)) map.set(base, d.name);
   }
   return map;
@@ -459,11 +459,21 @@ export async function buildSparePartsOffer(
   opts: BuildOfferOptions = {}
 ): Promise<Offer> {
   await prepareApp();
-  const docs = listDocumenti();
-  const pdfDoc = docs.find((d) => d.ext === ".pdf");
-  const mlDoc = docs.find((d) => /-ML\.xlsx$/i.test(d.name));
-  const slDoc = docs.find((d) => /-SL\.xlsx$/i.test(d.name));
-  const splDoc = docs.find((d) => /spare\s*parts?\s*list/i.test(d.name));
+  const docs = await listDocumentiClassificati();
+  const pdfDoc =
+    docs
+      .filter((d) => d.kind === "ordine")
+      .sort((a, b) => b.modified.localeCompare(a.modified))[0] ??
+    docs.find((d) => d.ext === ".pdf" && d.kind !== "template");
+  const mlDoc =
+    docs.find((d) => d.kind === "lista-motori") ??
+    docs.find((d) => /-ML\.xlsx$/i.test(d.name));
+  const slDoc =
+    docs.find((d) => d.kind === "lista-sensori") ??
+    docs.find((d) => /-SL\.xlsx$/i.test(d.name));
+  const splDoc =
+    docs.find((d) => d.kind === "listino") ??
+    docs.find((d) => /spare\s*parts?\s*list/i.test(d.name));
 
   if (!pdfDoc) {
     throw new Error("Documento d'ordine PDF non trovato nella cartella documenti.");
@@ -495,7 +505,7 @@ export async function buildSparePartsOffer(
     ? groupByJobBase(parseSensorList(resolveDocumento(slDoc.path)))
     : new Map();
 
-  const bomFiles = mapBomFiles();
+  const bomFiles = mapBomFiles(docs);
   let restrictBases: Set<string> | undefined;
   if (opts.restrictPaths && opts.restrictPaths.length > 0) {
     restrictBases = new Set(
