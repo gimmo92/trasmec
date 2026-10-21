@@ -171,9 +171,72 @@ function isBlankType(v: string | undefined): boolean {
   return !s || s === "-" || s === "–";
 }
 
+function pushExplosionDoor(
+  push: (row: BomRow) => void,
+  code: string,
+  size: string,
+  qty: number | undefined
+) {
+  if (!qty || qty <= 0 || isBlankType(code)) return;
+  const measure = !isBlankType(size) && size !== code ? ` ${size}` : "";
+  push({
+    partNumber: code,
+    descriptionEN: `Explosion proof door${measure}`.replace(/\s+/g, " ").trim(),
+    qty,
+    um: "NR",
+  });
+}
+
+/**
+ * Pannelli di scoppio (explosion proof door). Il telaio non entra.
+ * TK: Standard/Domed sulla stessa riga (Qty, Size, Item). TKK: una sezione sotto l'altra.
+ */
+function addBurstingDoors(grid: Grid, push: (row: BomRow) => void) {
+  let inBurst = false;
+  let kind = "";
+  const panelKind = /^(standard|domed|flameless|q-?box)$/i;
+  for (let r = 0; r < grid.length; r++) {
+    const row = grid[r] ?? [];
+    const label = cellStr(row[1]).toLowerCase();
+    if (label === "bursting panels") {
+      inBurst = true;
+      kind = "";
+      continue;
+    }
+    if (!inBurst) continue;
+    if (label === "inspection window for curved trough" || label === "remarks") break;
+    if (panelKind.test(label)) {
+      kind = label.replace("-", "");
+      continue;
+    }
+    if (label === "frame" || label === "cover") {
+      kind = "frame";
+      continue;
+    }
+    if (label === "qty" && /size/i.test(cellStr(row[2]))) {
+      const data = grid[r + 1] ?? [];
+      pushExplosionDoor(push, cellStr(data[3]), cellStr(data[2]), parseNum(data[1]));
+      pushExplosionDoor(push, cellStr(data[6]) || cellStr(data[5]), "", parseNum(data[4]));
+      kind = "";
+      r += 1;
+      continue;
+    }
+    if (label === "qty" || !kind || kind === "frame") continue;
+    const qty = parseNum(row[1]);
+    if (qty === undefined) continue;
+    const second = cellStr(row[2]);
+    const third = cellStr(row[3]);
+    const code = !isBlankType(third) ? third : second;
+    const size = !isBlankType(third) ? second : "";
+    pushExplosionDoor(push, code, size, qty);
+    kind = "";
+  }
+}
+
 /**
  * Distinta base TKK (foglio "1"): non c'è la tabella Part Number.
- * Estrae i ricambi dalle sezioni etichettate: sopporti, catena, sprinkler, pale.
+ * Estrae i ricambi dalle sezioni etichettate: supporti, catena, sprinkler,
+ * explosion proof door e, solo sulla catena doppia, gli scraper.
  */
 export function extractConfigBom(grids: Record<string, Grid>): {
   rows: BomRow[];
@@ -193,6 +256,8 @@ export function extractConfigBom(grids: Record<string, Grid>): {
   let seenSprinklers = false;
   let chainMeters = 0;
   let chainLinks = 0;
+  let sawSingleChain = false;
+  let sawDoubleChain = false;
 
   const push = (row: BomRow) => {
     rows.push({ ...row, source: "config" });
@@ -202,6 +267,8 @@ export function extractConfigBom(grids: Record<string, Grid>): {
     const row = grid[r] ?? [];
     const label = cellStr(row[1]);
     const labelN = label.toLowerCase();
+    if (/single\s*chain/i.test(labelN)) sawSingleChain = true;
+    if (/double\s*chain/i.test(labelN)) sawDoubleChain = true;
 
     if (labelN === "id") {
       const next = grid[r + 1] ?? [];
@@ -227,6 +294,7 @@ export function extractConfigBom(grids: Record<string, Grid>): {
         const pin = cellStr(row[7]);
         chainMeters = meters;
         chainLinks = parseNum(row[11]) ?? 0;
+        if (/^CT\d/i.test(code) && !sawSingleChain) sawDoubleChain = true;
         push({
           partNumber: code,
           descriptionEN: `TRASPORT CHAIN ${link} ${pin}`.replace(/\s+/g, " ").trim(),
@@ -280,9 +348,12 @@ export function extractConfigBom(grids: Record<string, Grid>): {
     }
   }
 
+  addBurstingDoors(grid, push);
+
   const pala = palaMaterialFromCodici(grids["Codici"], machineId, machineStd);
   const hasPala = pala ? pala.toUpperCase() !== "NO" : chainMeters > 0 || chainLinks > 0;
-  if (hasPala && (chainMeters > 0 || chainLinks > 0)) {
+  const doubleChain = sawDoubleChain && !sawSingleChain;
+  if (doubleChain && hasPala && (chainMeters > 0 || chainLinks > 0)) {
     const qty =
       chainLinks > 0 ? Math.ceil(chainLinks / 20) : Math.ceil(chainMeters / 1.42);
     push({

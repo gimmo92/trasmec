@@ -480,7 +480,16 @@ function chainStorage(installed: number, um: string, pitchMm: number): { qty: nu
  * Catene in metri/millimetri: metratura dal "chain ring" del disegno della commessa,
  * scorta al passo maglia. Pale e scraper del disegno entrano con la quantità del disegno.
  */
-function applyDrawings(spares: ProposalLine[], warnings: string[], infos: DrawingInfo[]): void {
+function isScraperItem(code: string, description: string): boolean {
+  return /^CT0003$/i.test(code) || /\b(scraper|scrap|pal[ae]|paddle)\b/i.test(`${code} ${description}`);
+}
+
+function applyDrawings(
+  spares: ProposalLine[],
+  warnings: string[],
+  infos: DrawingInfo[],
+  allowScrapers = true
+): void {
   for (const info of infos) if (info.warning) warnings.push(`${info.file}: ${info.warning}`);
 
   const chainLines = spares.filter(
@@ -527,6 +536,7 @@ function applyDrawings(spares: ProposalLine[], warnings: string[], infos: Drawin
     for (const extra of info.extras) {
       const key = (extra.code || extra.description).toUpperCase();
       if (seen.has(key)) continue;
+      if (!allowScrapers && isScraperItem(extra.code ?? "", extra.description)) continue;
       seen.add(key);
       const code = extra.code?.toUpperCase();
       const existing = code
@@ -668,13 +678,15 @@ export async function buildSparePartsOffer(
       warnings.push(...res.warnings);
     }
 
+    const doubleChain = parsed.bom.some((row) => /^CT\d+/i.test(String(row.partNumber ?? "")));
     applyDrawings(
       spares,
       warnings,
       drawingDocs
         .filter((d) => d.code?.toUpperCase() === base)
         .map((d) => drawings.get(d.name))
-        .filter((info): info is DrawingInfo => Boolean(info))
+        .filter((info): info is DrawingInfo => Boolean(info)),
+      parsed.format !== "config" || doubleChain
     );
 
     const section: MachineSection = {
