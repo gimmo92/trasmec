@@ -198,7 +198,7 @@ export default function OfferteV2() {
   return (
     <div className="v2-page">
       <div className="v2-head">
-        <h2>Offerta lista cliente</h2>
+        <h2>Offerta richiesta cliente</h2>
         <p className="indici-hint">
           Parte da una richiesta del cliente. Carica la mail oppure inserisci
           commessa, descrizione o codice e quantità: la generazione cerca il

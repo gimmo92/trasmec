@@ -44,7 +44,7 @@ export default function Home() {
             className={tab === "offerte-v2" ? "tab on" : "tab"}
             onClick={() => setTab("offerte-v2")}
           >
-            Offerta lista cliente
+            Offerta richiesta cliente
           </button>
           <button
             role="tab"
