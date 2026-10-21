@@ -108,5 +108,15 @@
     "sparePartsList": "NO",
     "strutturaDescrizione": "",
     "note": "Bursting panel della scheda"
+  },
+  {
+    "id": "108b26f2-fd32-419c-9137-4013aaaff5b7",
+    "n": 11,
+    "indice": "COUPLING GIUNTO",
+    "descrizioneOfferta": "Chain coupling",
+    "gestione": "Unico",
+    "sparePartsList": "NO",
+    "strutturaDescrizione": "",
+    "note": "Giunto a catena della scheda coclea"
   }
 ]

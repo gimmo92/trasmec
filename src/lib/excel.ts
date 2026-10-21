@@ -554,6 +554,8 @@ export function parseBom(filePath: string, relPath: string): ParsedBom {
   let format: ParsedBom["format"] = "unknown";
   let bom: BomRow[] = [];
 
+  const scheda =
+    !grids["Structured"] && !grids["1"] ? extractSchedaBom(grids) : null;
   if (grids["Structured"]) {
     format = "structured";
     const res = readBomTable(grids["Structured"]);
@@ -564,6 +566,10 @@ export function parseBom(filePath: string, relPath: string): ParsedBom {
     const res = extractConfigBom(grids);
     bom = res.rows;
     warnings.push(...res.warnings);
+  } else if (scheda) {
+    format = "unknown";
+    bom = scheda.rows;
+    warnings.push(...scheda.warnings);
   } else {
     warnings.push("Formato distinta non riconosciuto: nessun foglio 'Structured' o '1'.");
   }
@@ -609,8 +615,119 @@ export function parseBomForOffer(
   };
 }
 
+/** "TM 100 CLC" → "TM100CLC", così l'indice TM aggancia la scheda listino giusta. */
+function compactTm(desc: string): string {
+  return desc.replace(
+    /\bTM\s+(\d+(?:\s+[A-Z]{1,4})+)\b/gi,
+    (_, rest: string) => `TM${String(rest).replace(/\s+/g, "")}`
+  );
+}
+
+function sectionCode(grid: Grid | undefined, title: RegExp): string {
+  if (!grid) return "";
+  for (let r = 0; r < grid.length; r++) {
+    const label = cellStr(grid[r]?.[1]);
+    if (!title.test(label)) continue;
+    for (const cell of grid[r] ?? []) {
+      const code = cellStr(cell);
+      if (/^C\d{4,}/i.test(code)) return code;
+    }
+    for (let h = r + 1; h < Math.min(grid.length, r + 4); h++) {
+      const header = grid[h] ?? [];
+      const col = header.findIndex((c) => /drawing/.test(norm(c)));
+      if (col < 0) continue;
+      const code = cellStr(grid[h + 1]?.[col]);
+      if (!isBlankType(code)) return code;
+    }
+  }
+  return "";
+}
+
 /**
- * Tutte le righe della distinta (Parts only / Structured / primo foglio con Part Number).
+ * Coclea (foglio SPARE PARTS): le righe con flag S e quantità > 0 sono i ricambi.
+ * Il supporto TM resta un'unica riga: cuscinetti e tenute li aggiunge il listino.
+ */
+export function extractSchedaBom(grids: Record<string, Grid>): {
+  rows: BomRow[];
+  warnings: string[];
+  sheetUsed?: string;
+} | null {
+  const grid = grids["SPARE PARTS"];
+  if (!grid?.length) return null;
+  let headerIdx = -1;
+  for (let r = 0; r < Math.min(grid.length, 20); r++) {
+    const joined = (grid[r] ?? []).map(norm);
+    if (joined.some((cell) => cell === "installed qty" || cell.includes("installed qty"))) {
+      headerIdx = r;
+      break;
+    }
+  }
+  if (headerIdx < 0) return null;
+  const header = grid[headerIdx] ?? [];
+  const flagCol = findColIndex(header, ["spare parts"]);
+  const qtyCol = findColIndex(header, ["installed qty"]);
+  const codeCol = findColIndex(header, ["cod.", "cod", "code"]);
+  const kindCol = findColIndex(header, ["indicw"]);
+  const umCol = findColIndex(header, ["u.m", "um", "u.m."]);
+  const machineCol = findColIndex(header, ["description"]);
+  if (flagCol < 0 || qtyCol < 0) return null;
+
+  const distinta = grids["Distinta EN"] ?? grids["Distinta"];
+  const couplingCode = sectionCode(distinta, /chain coupling|giunto a catena/i);
+  const driveCode = sectionCode(distinta, /^drive supports$/i);
+
+  const rows: BomRow[] = [];
+  const warnings: string[] = [];
+  for (let r = headerIdx + 1; r < grid.length; r++) {
+    const row = grid[r] ?? [];
+    const flag = cellStr(row[flagCol]).toUpperCase();
+    if (flag !== "S") continue;
+    const qty = parseNum(row[qtyCol]);
+    if (!qty || qty <= 0) continue;
+    let description = "";
+    for (let c = qtyCol - 1; c > flagCol; c--) {
+      if (c === machineCol || c === codeCol || c === kindCol) continue;
+      const text = cellStr(row[c]);
+      if (isBlankType(text) || text.length < 3) continue;
+      if (/^bf\d/i.test(text)) continue;
+      if (/^(nr|pz|mt|mm|kg)$/i.test(text)) continue;
+      if (/^\d+([.,]\d+)?$/.test(text)) continue;
+      description = text;
+      break;
+    }
+    if (!description) continue;
+    const kind = kindCol >= 0 ? cellStr(row[kindCol]).toUpperCase() : "";
+    if (kind === "SPR" || /minimax|sprinkler/i.test(description)) {
+      if (!/sprinkler/i.test(description)) description = `Sprinkler ${description}`;
+    }
+    description = compactTm(description.replace(/\s+/g, " ").trim());
+
+    let partNumber = codeCol >= 0 ? cellStr(row[codeCol]) : "";
+    if (isBlankType(partNumber)) {
+      const supportModel = description.match(/\b((?:SNL|SNH|FNL|UKT)\s*\d+\s*[A-Z]*)\b/i);
+      if (/chain\s*coupling|giunto/i.test(description)) partNumber = couplingCode || "GIUNTO";
+      else if (/\bTM\d/i.test(description)) partNumber = driveCode || "TM";
+      else if (supportModel) partNumber = supportModel[1].replace(/\s+/g, " ").trim();
+      else if (/^chain\b/i.test(description)) partNumber = "CHAIN";
+      else partNumber = description.split(/\s+/).slice(0, 3).join(" ");
+    }
+    const umRaw = umCol >= 0 ? cellStr(row[umCol]) : "";
+    rows.push({
+      partNumber,
+      descriptionEN: description,
+      qty,
+      um: /^m(t|m)?$/i.test(umRaw) ? "MT" : umRaw && !isBlankType(umRaw) ? umRaw : "NR",
+      source: "scheda",
+    });
+  }
+  if (!rows.length) {
+    warnings.push("Scheda SPARE PARTS: nessuna riga con flag S e quantità installata.");
+  }
+  return { rows, warnings, sheetUsed: "SPARE PARTS" };
+}
+
+/**
+ * Tutte le righe della distinta (Parts only / Structured / scheda coclea / config).
  * Nessun filtro per prefisso: il filtro ricambi è demandato agli indici.
  */
 export function extractAllBomRows(grids: Record<string, Grid>): {
@@ -627,6 +744,8 @@ export function extractAllBomRows(grids: Record<string, Grid>): {
   if (grids["1"] && !grids["Structured"] && !grids["Parts only"]) {
     return extractConfigBom(grids);
   }
+  const scheda = extractSchedaBom(grids);
+  if (scheda) return scheda;
   for (const [name, grid] of Object.entries(grids)) {
     if (preferred.includes(name)) continue;
     const res = readBomTable(grid);

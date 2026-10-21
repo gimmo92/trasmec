@@ -130,6 +130,12 @@ function matchIndex(
     for (const token of tokens) {
       if (!tokenInDescription(desc, token)) continue;
       if (isUcfAccessoryMention(desc, token)) continue;
+      if (
+        /chain\s*coupling|giunto/i.test(desc) &&
+        /^(CHAIN|TRASPORT|CONVEYING)$/i.test(token)
+      ) {
+        continue;
+      }
       const specificity = token.length * 100 - tokens.length;
       if (!best || specificity > best.specificity) {
         best = {
@@ -156,6 +162,8 @@ function buildOfferDescription(
   const model = family || "";
   if (tpl) {
     if (/\{(modello|resto|model)\}/i.test(tpl)) {
+      // "Chain CHAIN" non dice nulla: tieni il testo della scheda (es. "Chain - L=-").
+      if (!model || /^(CHAIN|TRASPORT|CONVEYING|CATENA)$/i.test(model)) return fallback;
       return tpl
         .replace(/\{(modello|resto|model)\}/gi, model)
         .replace(/\s+/g, " ")
@@ -326,7 +334,8 @@ function uniqueHits(
   for (const row of rows) {
     const pn = (row.partNumber ?? "").trim();
     if (!pn) continue;
-    const skipSigla = opts.skipSigla || row.source === "config";
+    const skipSigla =
+      opts.skipSigla || row.source === "config" || row.source === "scheda";
     if (!skipSigla && !isSparePartCode(pn)) continue;
     const desc = bomDescription(row);
     const m = matchIndex(desc, indices);

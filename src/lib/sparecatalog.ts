@@ -282,6 +282,25 @@ async function buildCatalog(filePath: string): Promise<SpareCatalog> {
       }
     }
 
+    if (!assembly) {
+      for (let r = Math.max(1, headerRow - 4); r < headerRow; r++) {
+        const row = ws.getRow(r);
+        let blob = "";
+        let yellowCode = "";
+        for (let c = 1; c <= maxCol; c++) {
+          const text = cellStr(row.getCell(c).value);
+          if (text) blob += ` ${text}`;
+          if (!yellowCode && looksLikeCode(text) && isYellowFill(row.getCell(c).fill)) {
+            yellowCode = text;
+          }
+        }
+        if (yellowCode && /supporto completo/i.test(blob)) {
+          assembly = { code: yellowCode, description: yellowCode };
+          break;
+        }
+      }
+    }
+
     const sheetKey = normKey(ws.name);
     const isTkSupport = /^SUPPORTOTK/.test(sheetKey);
     const picked = isTkSupport
