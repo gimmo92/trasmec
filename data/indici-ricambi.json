@@ -98,5 +98,15 @@
     "sparePartsList": "SI",
     "strutturaDescrizione": "UCFL più numero",
     "note": ""
+  },
+  {
+    "id": "fcfd1ae9-04d2-4714-b90e-7ee3331dce54",
+    "n": 10,
+    "indice": "PORTELL DOOR EXPLOSION",
+    "descrizioneOfferta": "Explosion proof door",
+    "gestione": "Unico",
+    "sparePartsList": "NO",
+    "strutturaDescrizione": "",
+    "note": "Bursting panel della scheda"
   }
 ]

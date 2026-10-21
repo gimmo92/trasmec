@@ -181,7 +181,7 @@ function pushExplosionDoor(
   const measure = !isBlankType(size) && size !== code ? ` ${size}` : "";
   push({
     partNumber: code,
-    descriptionEN: `Explosion proof door${measure}`.replace(/\s+/g, " ").trim(),
+    descriptionEN: `Explosion proof door PORTELL${measure}`.replace(/\s+/g, " ").trim(),
     qty,
     um: "NR",
   });
