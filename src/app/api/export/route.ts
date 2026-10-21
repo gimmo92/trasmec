@@ -4,6 +4,7 @@ import path from "node:path";
 import ExcelJS from "exceljs";
 import type { MachineSection, Offer, ProposalLine } from "@/lib/types";
 import { COMPOUND_FILLS, compoundFillIndex, isNonSeSensorLine } from "@/lib/highlight";
+import { classifyComponent } from "@/lib/spareclass";
 
 export const runtime = "nodejs";
 
@@ -246,6 +247,16 @@ export async function POST(req: NextRequest) {
       // V €/TOTAL = (T-(T*U))*S
       row.getCell(22).value = { formula: `=(T${r}-(T${r}*U${r}))*S${r}` };
       row.getCell(22).alignment = { horizontal: "center", vertical: "middle" };
+      const info = classifyComponent(l);
+      const delivery = row.getCell(23);
+      if (info.deliveryDays != null) delivery.value = info.deliveryDays;
+      delivery.alignment = { horizontal: "center", vertical: "middle" };
+      const priority = row.getCell(24);
+      if (info.priority) priority.value = info.priority;
+      priority.alignment = { horizontal: "center", vertical: "middle" };
+      const kind = row.getCell(25);
+      if (info.kind) kind.value = info.kind;
+      kind.alignment = { horizontal: "center", vertical: "middle" };
 
       const hue = compoundFillIndex(l.compoundHue);
 

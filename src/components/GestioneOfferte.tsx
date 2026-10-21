@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DOC_KIND_LABEL, type DocumentoFile, type MachineSection, type Offer, type ProposalLine } from "@/lib/types";
 import { compoundFillIndex, isNonSeSensorLine } from "@/lib/highlight";
+import { classifyComponent } from "@/lib/spareclass";
 
 interface Health {
   apiKeyConfigured: boolean;
@@ -45,6 +46,13 @@ function LinesTable({
           <th style={{ width: "110px" }}>Installed Qty</th>
           <th style={{ width: "150px" }}>Recommended Storage</th>
           <th style={{ width: "50px" }}>U.M.</th>
+          <th style={{ width: "80px" }}>Delivery</th>
+          <th style={{ width: "70px" }} title="*** NECESSARY  ** RECOMMENDED  * USEFUL">
+            ***
+          </th>
+          <th style={{ width: "50px" }} title="WEAR PART (W) / SPARE PART (S)">
+            W/S
+          </th>
           <th className="row-del" />
         </tr>
       </thead>
@@ -57,6 +65,7 @@ function LinesTable({
           ]
             .filter(Boolean)
             .join(" ");
+          const info = classifyComponent(l);
           return (
           <tr key={i} className={classes || undefined}>
             <td>
@@ -72,6 +81,9 @@ function LinesTable({
             <td className="num">{withUnit(l.installedQty, l.um)}</td>
             <td className="num">{withUnit(l.recommendedQty, l.um)}</td>
             <td className="num">{l.um || "NR"}</td>
+            <td className="num">{info.deliveryDays ?? ""}</td>
+            <td className="num">{info.priority}</td>
+            <td className="num">{info.kind}</td>
             <td className="row-del">
               <button
                 type="button"
