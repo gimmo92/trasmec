@@ -5,6 +5,8 @@ import type { OfferHeader } from "./types";
 export interface OrderItem {
   code: string; // es. BE0805
   description?: string;
+  /** Posizione di layout nel COC, es. "14.055" da "POS. 14.055". */
+  position?: string;
 }
 
 export interface ParsedOrder {
@@ -127,10 +129,12 @@ export function parseOrderText(text: string): Omit<ParsedOrder, "rawText"> {
   const location =
     /SINGAPORE/i.test(projectName) ? "SINGAPORE" : undefined;
 
-  const itemLines: { code: string; line: number }[] = [];
+  const itemLines: { code: string; line: number; position?: string }[] = [];
   lines.forEach((l, i) => {
     const m = l.match(ITEM_LINE);
-    if (m) itemLines.push({ code: m[1].toUpperCase(), line: i });
+    if (!m) return;
+    const position = l.match(/POS\.\s*(\d+(?:\.\d+)*)/i)?.[1];
+    itemLines.push({ code: m[1].toUpperCase(), line: i, position });
   });
 
   // Tutti i codici in ordine (unici): prima le righe item, altrimenti ogni codice nel testo
@@ -193,9 +197,14 @@ export function parseOrderText(text: string): Omit<ParsedOrder, "rawText"> {
     const idx = allItems.indexOf(afterSalesCode);
     if (idx >= 0) includedCodes = allItems.slice(idx + 1);
   }
+  const positionByCode = new Map<string, string>();
+  for (const row of itemLines) {
+    if (row.position && !positionByCode.has(row.code)) positionByCode.set(row.code, row.position);
+  }
   const includedItems: OrderItem[] = includedCodes.map((code) => ({
     code,
     description: descByCode.get(code),
+    position: positionByCode.get(code),
   }));
 
   return {

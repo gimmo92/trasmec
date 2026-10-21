@@ -39,6 +39,14 @@ function machineDescription(m: MachineSection): string {
   return m.machineType || m.description || m.jobNr || "";
 }
 
+/** Codice macchina e, se c'è nel COC, la posizione: "BF0509 POS. 14.050". */
+function projectLabel(m: MachineSection): string {
+  const code = m.jobNr || m.itemCode || "";
+  const pos = (m.layoutPosition || "").replace(/^POS\.\s*/i, "").trim();
+  if (code && pos) return `${code} POS. ${pos}`;
+  return code;
+}
+
 const LOGOS_DIR = path.join(process.cwd(), "public", "logos");
 
 function addHeaderLogos(wb: ExcelJS.Workbook, ws: ExcelJS.Worksheet) {
@@ -79,7 +87,7 @@ export async function POST(req: NextRequest) {
 
     // Larghezze colonne (come da template)
     const widths: Record<string, number> = {
-      A: 3, B: 2.7, C: 3, D: 3.5, E: 17, F: 5.8, G: 15, H: 27.7,
+      A: 3, B: 2.7, C: 3, D: 3.5, E: 17, F: 5.8, G: 24, H: 27.7,
       I: 2.7, J: 19.7, K: 11, L: 3.7, M: 13.7, N: 8.7, O: 21.2, P: 5.7,
       Q: 6.7, R: 8.5, S: 8.5, T: 12.8, U: 10.8, V: 14, W: 5, X: 10.2, Y: 7,
     };
@@ -219,7 +227,7 @@ export async function POST(req: NextRequest) {
       const row = ws.getRow(r);
       row.height = 18;
 
-      row.getCell(7).value = m.jobNr || ""; // G PROJECT
+      row.getCell(7).value = projectLabel(m); // G PROJECT: codice + POS. del COC
       row.getCell(8).value = machineDescription(m); // H DESCRIPTION macchina
       row.getCell(8).alignment = { horizontal: "left", vertical: "middle" };
       row.getCell(9).value = l.code; // I COD.
@@ -284,7 +292,7 @@ export async function POST(req: NextRequest) {
       if (!lines.length) {
         // riga segnaposto se la macchina non ha componenti
         const row = ws.getRow(r);
-        row.getCell(7).value = m.jobNr || "";
+        row.getCell(7).value = projectLabel(m);
         row.getCell(8).value = machineDescription(m);
         row.getCell(6).value = machineIndex;
         row.getCell(11).value = "\u2014 nessun componente \u2014";

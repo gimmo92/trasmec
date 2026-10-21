@@ -701,7 +701,7 @@ export async function buildSparePartsOffer(
     const section: MachineSection = {
       itemCode: base,
       jobNr: parsed.header.jobNr,
-      layoutPosition: parsed.header.layoutPosition,
+      layoutPosition: item.position || parsed.header.layoutPosition,
       machineType:
         parsed.header.sizeType || parsed.header.machineCode || undefined,
       description: item.description || parsed.header.description,

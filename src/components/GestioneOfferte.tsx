@@ -110,7 +110,9 @@ function MachineBlock({
   m: MachineSection;
   onRemoveLine: (kind: LineKind, index: number) => void;
 }) {
-  const title = [m.layoutPosition, m.jobNr, m.machineType]
+  const pos = (m.layoutPosition || "").replace(/^POS\.\s*/i, "").trim();
+  const posLabel = pos ? (/^\d/.test(pos) ? `POS. ${pos}` : pos) : "";
+  const title = [m.jobNr, posLabel, m.machineType]
     .filter(Boolean)
     .join("  ·  ");
   return (
