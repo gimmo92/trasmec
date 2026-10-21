@@ -17,6 +17,19 @@ const CLOUD_PATH = "config/indici.json";
 
 let fromCloud = false;
 let cloudRows: SpareIndexRow[] | null = null;
+/** Le scritture in corso non vanno coperte da una rilettura cloud più vecchia. */
+let epoch = 0;
+let writing = 0;
+let queue: Promise<unknown> = Promise.resolve();
+
+function enqueue<T>(task: () => Promise<T>): Promise<T> {
+  const run = queue.then(task, task);
+  queue = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
+}
 
 const SEED: Omit<SpareIndexRow, "id">[] = [
   { n: 1, indice: "SECTOR", descrizioneOfferta: "KIT SETTORI", gestione: "Composto", sparePartsList: "SI", strutturaDescrizione: "", note: "" },
@@ -69,14 +82,23 @@ function writeAll(rows: SpareIndexRow[]) {
 }
 
 async function persist(rows: SpareIndexRow[]) {
-  cloudRows = rows;
+  const copy = rows.map((row) => ({ ...row }));
+  writing += 1;
+  epoch += 1;
+  cloudRows = copy;
   fromCloud = useCloud();
-  writeAll(rows);
-  if (useCloud()) await putJson(CLOUD_PATH, rows);
+  try {
+    writeAll(copy);
+    if (useCloud()) await putJson(CLOUD_PATH, copy);
+  } finally {
+    writing -= 1;
+  }
 }
 
 export async function hydrateIndici(): Promise<void> {
+  const seen = epoch;
   const remote = await getJson<Partial<SpareIndexRow>[]>(CLOUD_PATH);
+  if (seen !== epoch || writing > 0) return;
   if (Array.isArray(remote)) {
     cloudRows = remote.map((row) => normalizeRow(row));
     fromCloud = true;
@@ -94,65 +116,71 @@ export function listIndici(): SpareIndexRow[] {
 }
 
 export async function createIndice(input: Partial<SpareIndexRow>): Promise<SpareIndexRow> {
-  const rows = listIndici();
-  const nextN =
-    rows.reduce((max, r) => (Number.isFinite(r.n) && r.n > max ? r.n : max), 0) + 1;
-  const row: SpareIndexRow = {
-    id: randomUUID(),
-    n: typeof input.n === "number" && Number.isFinite(input.n) ? input.n : nextN,
-    indice: (input.indice ?? "").trim(),
-    descrizioneOfferta: (input.descrizioneOfferta ?? "").trim(),
-    gestione: (input.gestione ?? GESTIONE_OPTIONS[0]).trim(),
-    sparePartsList: input.sparePartsList === "NO" ? "NO" : "SI",
-    strutturaDescrizione: (input.strutturaDescrizione ?? "").trim(),
-    note: (input.note ?? "").trim(),
-  };
-  rows.push(row);
-  await persist(rows);
-  return row;
+  return enqueue(async () => {
+    const rows = listIndici().map((row) => ({ ...row }));
+    const nextN =
+      rows.reduce((max, r) => (Number.isFinite(r.n) && r.n > max ? r.n : max), 0) + 1;
+    const row: SpareIndexRow = {
+      id: randomUUID(),
+      n: typeof input.n === "number" && Number.isFinite(input.n) ? input.n : nextN,
+      indice: (input.indice ?? "").trim(),
+      descrizioneOfferta: (input.descrizioneOfferta ?? "").trim(),
+      gestione: (input.gestione ?? GESTIONE_OPTIONS[0]).trim(),
+      sparePartsList: input.sparePartsList === "NO" ? "NO" : "SI",
+      strutturaDescrizione: (input.strutturaDescrizione ?? "").trim(),
+      note: (input.note ?? "").trim(),
+    };
+    rows.push(row);
+    await persist(rows);
+    return row;
+  });
 }
 
 export async function updateIndice(
   id: string,
   patch: Partial<SpareIndexRow>
 ): Promise<SpareIndexRow | null> {
-  const rows = listIndici();
-  const idx = rows.findIndex((r) => r.id === id);
-  if (idx < 0) return null;
-  const current = rows[idx];
-  const flag: SparePartsFlag =
-    patch.sparePartsList === "NO" || patch.sparePartsList === "SI"
-      ? patch.sparePartsList
-      : current.sparePartsList;
-  const updated: SpareIndexRow = {
-    ...current,
-    n:
-      typeof patch.n === "number" && Number.isFinite(patch.n)
-        ? patch.n
-        : current.n,
-    indice: patch.indice !== undefined ? String(patch.indice) : current.indice,
-    descrizioneOfferta:
-      patch.descrizioneOfferta !== undefined
-        ? String(patch.descrizioneOfferta)
-        : current.descrizioneOfferta,
-    gestione:
-      patch.gestione !== undefined ? String(patch.gestione) : current.gestione,
-    sparePartsList: flag,
-    strutturaDescrizione:
-      patch.strutturaDescrizione !== undefined
-        ? String(patch.strutturaDescrizione)
-        : current.strutturaDescrizione,
-    note: patch.note !== undefined ? String(patch.note) : current.note,
-  };
-  rows[idx] = updated;
-  await persist(rows);
-  return updated;
+  return enqueue(async () => {
+    const rows = listIndici().map((row) => ({ ...row }));
+    const idx = rows.findIndex((r) => r.id === id);
+    if (idx < 0) return null;
+    const current = rows[idx];
+    const flag: SparePartsFlag =
+      patch.sparePartsList === "NO" || patch.sparePartsList === "SI"
+        ? patch.sparePartsList
+        : current.sparePartsList;
+    const updated: SpareIndexRow = {
+      ...current,
+      n:
+        typeof patch.n === "number" && Number.isFinite(patch.n)
+          ? patch.n
+          : current.n,
+      indice: patch.indice !== undefined ? String(patch.indice) : current.indice,
+      descrizioneOfferta:
+        patch.descrizioneOfferta !== undefined
+          ? String(patch.descrizioneOfferta)
+          : current.descrizioneOfferta,
+      gestione:
+        patch.gestione !== undefined ? String(patch.gestione) : current.gestione,
+      sparePartsList: flag,
+      strutturaDescrizione:
+        patch.strutturaDescrizione !== undefined
+          ? String(patch.strutturaDescrizione)
+          : current.strutturaDescrizione,
+      note: patch.note !== undefined ? String(patch.note) : current.note,
+    };
+    rows[idx] = updated;
+    await persist(rows);
+    return updated;
+  });
 }
 
 export async function deleteIndice(id: string): Promise<boolean> {
-  const rows = listIndici();
-  const next = rows.filter((r) => r.id !== id);
-  if (next.length === rows.length) return false;
-  await persist(next);
-  return true;
+  return enqueue(async () => {
+    const rows = listIndici();
+    const next = rows.filter((r) => r.id !== id);
+    if (next.length === rows.length) return false;
+    await persist(next);
+    return true;
+  });
 }

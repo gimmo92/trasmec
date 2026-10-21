@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SpareIndexRow, SparePartsFlag } from "@/lib/types";
 
 const GESTIONE_OPTIONS = [
@@ -31,6 +31,14 @@ export default function IndiciRicambi() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [savingId, setSavingId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("");
+  const rowsRef = useRef<SpareIndexRow[]>([]);
+  const deletedRef = useRef(new Set<string>());
+  const saveTail = useRef(new Map<string, Promise<void>>());
+
+  const replaceRows = (next: SpareIndexRow[]) => {
+    rowsRef.current = next;
+    setRows(next);
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -39,7 +47,10 @@ export default function IndiciRicambi() {
       const res = await fetch("/api/indici");
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Errore di caricamento");
-      setRows(data.items ?? []);
+      const items = (data.items ?? []) as SpareIndexRow[];
+      rowsRef.current = items;
+      deletedRef.current.clear();
+      setRows(items);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -56,23 +67,47 @@ export default function IndiciRicambi() {
     window.setTimeout(() => setStatus(""), 1600);
   };
 
-  const saveRow = async (id: string, patch: Partial<SpareIndexRow>) => {
+  const editRow = (id: string, patch: Partial<SpareIndexRow>) => {
+    if (deletedRef.current.has(id)) return;
+    replaceRows(rowsRef.current.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  };
+
+  const writeLatest = async (id: string) => {
+    if (deletedRef.current.has(id)) return;
     setSavingId(id);
     try {
-      const res = await fetch(`/api/indici/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Errore di salvataggio");
-      setRows((prev) => prev.map((r) => (r.id === id ? data.item : r)));
-      flash("Salvato");
+      for (let guard = 0; guard < 20 && !deletedRef.current.has(id); guard += 1) {
+        const snapshot = rowsRef.current.find((r) => r.id === id);
+        if (!snapshot) return;
+        const stamp = JSON.stringify(snapshot);
+        const res = await fetch(`/api/indici/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(snapshot),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (deletedRef.current.has(id)) return;
+        if (!res.ok) throw new Error(data.error || "Errore di salvataggio");
+        const live = rowsRef.current.find((r) => r.id === id);
+        if (!live || JSON.stringify(live) === stamp) {
+          flash("Salvato");
+          return;
+        }
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (!deletedRef.current.has(id)) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     } finally {
-      setSavingId(null);
+      setSavingId((cur) => (cur === id ? null : cur));
     }
+  };
+
+  const saveRow = (id: string) => {
+    if (deletedRef.current.has(id)) return;
+    const prev = saveTail.current.get(id) ?? Promise.resolve();
+    const next = prev.catch(() => undefined).then(() => writeLatest(id));
+    saveTail.current.set(id, next);
   };
 
   const addRow = async () => {
@@ -85,7 +120,7 @@ export default function IndiciRicambi() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Errore di creazione");
-      setRows((prev) => [...prev, data.item]);
+      replaceRows([...rowsRef.current, data.item]);
       flash("Riga aggiunta");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -95,14 +130,20 @@ export default function IndiciRicambi() {
   const removeRow = async (row: SpareIndexRow) => {
     const label = row.indice || row.descrizioneOfferta || `#${row.n}`;
     if (!window.confirm(`Eliminare la riga «${label}»?`)) return;
+    const previous = rowsRef.current;
+    deletedRef.current.add(row.id);
+    replaceRows(previous.filter((r) => r.id !== row.id));
     setError(null);
     try {
       const res = await fetch(`/api/indici/${row.id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Errore di eliminazione");
-      setRows((prev) => prev.filter((r) => r.id !== row.id));
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Errore di eliminazione");
+      }
       flash("Riga eliminata");
     } catch (e) {
+      deletedRef.current.delete(row.id);
+      replaceRows(previous);
       setError(e instanceof Error ? e.message : String(e));
     }
   };
@@ -164,7 +205,7 @@ export default function IndiciRicambi() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
-          <button className="primary" onClick={addRow}>
+          <button type="button" className="primary" onClick={addRow}>
             Aggiungi riga
           </button>
         </div>
@@ -203,48 +244,22 @@ export default function IndiciRicambi() {
                     <input
                       type="number"
                       value={row.n}
-                      onChange={(e) =>
-                        setRows((prev) =>
-                          prev.map((r) =>
-                            r.id === row.id
-                              ? { ...r, n: Number(e.target.value) || 0 }
-                              : r
-                          )
-                        )
-                      }
-                      onBlur={(e) =>
-                        saveRow(row.id, { n: Number(e.target.value) || 0 })
-                      }
+                      onChange={(e) => editRow(row.id, { n: Number(e.target.value) || 0 })}
+                      onBlur={() => saveRow(row.id)}
                     />
                   </td>
                   <td>
                     <input
                       value={row.indice}
-                      onChange={(e) =>
-                        setRows((prev) =>
-                          prev.map((r) =>
-                            r.id === row.id ? { ...r, indice: e.target.value } : r
-                          )
-                        )
-                      }
-                      onBlur={(e) => saveRow(row.id, { indice: e.target.value })}
+                      onChange={(e) => editRow(row.id, { indice: e.target.value })}
+                      onBlur={() => saveRow(row.id)}
                     />
                   </td>
                   <td>
                     <input
                       value={row.descrizioneOfferta}
-                      onChange={(e) =>
-                        setRows((prev) =>
-                          prev.map((r) =>
-                            r.id === row.id
-                              ? { ...r, descrizioneOfferta: e.target.value }
-                              : r
-                          )
-                        )
-                      }
-                      onBlur={(e) =>
-                        saveRow(row.id, { descrizioneOfferta: e.target.value })
-                      }
+                      onChange={(e) => editRow(row.id, { descrizioneOfferta: e.target.value })}
+                      onBlur={() => saveRow(row.id)}
                     />
                   </td>
                   <td>
@@ -257,12 +272,8 @@ export default function IndiciRicambi() {
                       onChange={(e) => {
                         const v = e.target.value;
                         if (v === "__custom__") return;
-                        setRows((prev) =>
-                          prev.map((r) =>
-                            r.id === row.id ? { ...r, gestione: v } : r
-                          )
-                        );
-                        saveRow(row.id, { gestione: v });
+                        editRow(row.id, { gestione: v });
+                        saveRow(row.id);
                       }}
                     >
                       {GESTIONE_OPTIONS.map((opt) => (
@@ -283,12 +294,8 @@ export default function IndiciRicambi() {
                       value={row.sparePartsList}
                       onChange={(e) => {
                         const v = e.target.value as SparePartsFlag;
-                        setRows((prev) =>
-                          prev.map((r) =>
-                            r.id === row.id ? { ...r, sparePartsList: v } : r
-                          )
-                        );
-                        saveRow(row.id, { sparePartsList: v });
+                        editRow(row.id, { sparePartsList: v });
+                        saveRow(row.id);
                       }}
                     >
                       <option value="SI">SI</option>
@@ -298,35 +305,24 @@ export default function IndiciRicambi() {
                   <td>
                     <input
                       value={row.strutturaDescrizione ?? ""}
-                      onChange={(e) =>
-                        setRows((prev) =>
-                          prev.map((r) =>
-                            r.id === row.id
-                              ? { ...r, strutturaDescrizione: e.target.value }
-                              : r
-                          )
-                        )
-                      }
-                      onBlur={(e) =>
-                        saveRow(row.id, { strutturaDescrizione: e.target.value })
-                      }
+                      onChange={(e) => editRow(row.id, { strutturaDescrizione: e.target.value })}
+                      onBlur={() => saveRow(row.id)}
                     />
                   </td>
                   <td>
                     <input
                       value={row.note}
-                      onChange={(e) =>
-                        setRows((prev) =>
-                          prev.map((r) =>
-                            r.id === row.id ? { ...r, note: e.target.value } : r
-                          )
-                        )
-                      }
-                      onBlur={(e) => saveRow(row.id, { note: e.target.value })}
+                      onChange={(e) => editRow(row.id, { note: e.target.value })}
+                      onBlur={() => saveRow(row.id)}
                     />
                   </td>
                   <td className="actions-col">
-                    <button className="danger" onClick={() => removeRow(row)}>
+                    <button
+                      type="button"
+                      className="danger"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => removeRow(row)}
+                    >
                       Elimina
                     </button>
                   </td>
