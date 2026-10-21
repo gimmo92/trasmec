@@ -23,9 +23,9 @@ function formatSize(bytes: number): string {
 
 type LineKind = "spares" | "motors" | "sensors";
 
-function withUnit(qty: number | null | undefined, um?: string): string {
+function formatQty(qty: number | null | undefined): string {
   if (qty === null || qty === undefined) return "";
-  return `${qty.toLocaleString("it-IT", { maximumFractionDigits: 3 })} ${(um || "NR").toUpperCase()}`;
+  return qty.toLocaleString("it-IT", { maximumFractionDigits: 3 });
 }
 
 function LinesTable({
@@ -43,9 +43,9 @@ function LinesTable({
         <tr>
           <th style={{ width: "18%" }}>Codice</th>
           <th>Descrizione</th>
+          <th style={{ width: "50px" }}>U.M.</th>
           <th style={{ width: "110px" }}>Installed Qty</th>
           <th style={{ width: "150px" }}>Recommended Storage</th>
-          <th style={{ width: "50px" }}>U.M.</th>
           <th style={{ width: "80px" }}>Delivery</th>
           <th style={{ width: "70px" }} title="*** NECESSARY  ** RECOMMENDED  * USEFUL">
             ***
@@ -78,9 +78,9 @@ function LinesTable({
               {l.descriptionIT || l.descriptionEN || ""}
               {l.atex ? <span className="tag">{l.atex}</span> : null}
             </td>
-            <td className="num">{withUnit(l.installedQty, l.um)}</td>
-            <td className="num">{withUnit(l.recommendedQty, l.um)}</td>
-            <td className="num">{l.um || "NR"}</td>
+            <td className="num">{(l.um || "NR").toUpperCase()}</td>
+            <td className="num">{formatQty(l.installedQty)}</td>
+            <td className="num">{formatQty(l.recommendedQty)}</td>
             <td className="num">{info.deliveryDays ?? ""}</td>
             <td className="num">{info.priority}</td>
             <td className="num">{info.kind}</td>
