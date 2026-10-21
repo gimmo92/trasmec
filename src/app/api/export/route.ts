@@ -54,7 +54,7 @@ function paintBlock(row: ExcelJS.Row, from: number, to: number, argb: string) {
   for (let col = from; col <= to; col++) row.getCell(col).fill = fill;
 }
 
-export async function buildOfferWorkbook(offer: Offer): Promise<ExcelJS.Buffer> {
+async function buildOfferWorkbook(offer: Offer): Promise<ExcelJS.Buffer> {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.readFile(TEMPLATE);
   const foglio = wb.getWorksheet("Foglio1");
