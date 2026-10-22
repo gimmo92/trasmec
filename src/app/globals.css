@@ -891,6 +891,69 @@ button.danger:hover:not(:disabled) {
   opacity: 0.6;
 }
 
+.rules-page {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 22px 26px 40px;
+  max-width: 820px;
+}
+
+.rules-head h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+
+.rules-head p,
+.rules-page section p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.rules-page section {
+  margin-top: 22px;
+}
+
+.rules-page h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.rules-page ul {
+  margin: 0;
+  padding-left: 18px;
+  line-height: 1.5;
+}
+
+.rules-page li + li {
+  margin-top: 6px;
+}
+
+.rules-table {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.rules-table th,
+.rules-table td {
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.rules-table th {
+  background: var(--panel-2);
+  font-weight: 600;
+}
+
+.rules-table td:nth-child(n + 2) {
+  text-align: center;
+  width: 90px;
+}
+
 .v2-page {
   flex: 1;
   min-height: 0;

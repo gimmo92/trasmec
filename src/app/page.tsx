@@ -3,13 +3,14 @@
 import { useState } from "react";
 import AccountBar from "@/components/AccountBar";
 import Archivio from "@/components/Archivio";
+import Funzionamento from "@/components/Funzionamento";
 import GestioneOfferte from "@/components/GestioneOfferte";
 import IndiciRicambi from "@/components/IndiciRicambi";
 import IstruzioniPersonalizzate from "@/components/IstruzioniPersonalizzate";
 import OfferteV2 from "@/components/OfferteV2";
 import SigleSpareParts from "@/components/SigleSpareParts";
 
-type Tab = "archivio" | "offerte" | "offerte-v2" | "indici" | "sigle" | "istruzioni";
+type Tab = "archivio" | "offerte" | "funzionamento" | "offerte-v2" | "indici" | "sigle" | "istruzioni";
 
 export default function Home() {
   const [tab, setTab] = useState<Tab>("archivio");
@@ -37,6 +38,14 @@ export default function Home() {
             onClick={() => setTab("offerte")}
           >
             Offerta lista impianto
+          </button>
+          <button
+            role="tab"
+            aria-selected={tab === "funzionamento"}
+            className={tab === "funzionamento" ? "tab on" : "tab"}
+            onClick={() => setTab("funzionamento")}
+          >
+            Funzionamento
           </button>
           <button
             role="tab"
@@ -86,6 +95,13 @@ export default function Home() {
         className="tab-panel"
       >
         <GestioneOfferte active={tab === "offerte"} />
+      </section>
+      <section
+        role="tabpanel"
+        hidden={tab !== "funzionamento"}
+        className="tab-panel"
+      >
+        <Funzionamento />
       </section>
       <section
         role="tabpanel"
