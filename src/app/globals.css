@@ -531,6 +531,12 @@ button.danger:hover:not(:disabled) {
 .offer tr.compound-5 td {
   background: #e8dfd6;
 }
+.offer tr.support-0 td {
+  background: #e5ffff;
+}
+.offer tr.support-1 td {
+  background: #ffefff;
+}
 .offer tr.sensor-other td {
   background: #ffe566;
 }

@@ -673,15 +673,17 @@ export async function buildSparePartsOffer(
     const spares: ProposalLine[] = [];
     const warnings = [...parsed.warnings];
     let compoundHue = 0;
+    let supportHue = 0;
 
     for (const g of groups) {
       const res = linesFromGroup(g, spareMap, catalog);
-      const grouped =
-        isComposto(g[0].indexRow.gestione) ||
-        res.lines.some((l) => l.highlightGroup === "cuscinetti");
+      const isSupport = res.lines.some((l) => l.highlightGroup === "cuscinetti");
+      const grouped = isComposto(g[0].indexRow.gestione) || isSupport;
       if (grouped) {
-        for (const l of res.lines) l.compoundHue = compoundHue;
-        compoundHue += 1;
+        const hue = isSupport ? supportHue : compoundHue;
+        for (const l of res.lines) l.compoundHue = hue;
+        if (isSupport) supportHue += 1;
+        else compoundHue += 1;
       }
       spares.push(...res.lines);
       warnings.push(...res.warnings);

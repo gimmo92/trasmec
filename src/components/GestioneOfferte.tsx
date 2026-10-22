@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DOC_KIND_LABEL, type DocumentoFile, type MachineSection, type Offer, type ProposalLine } from "@/lib/types";
-import { compoundFillIndex, isNonSeSensorLine } from "@/lib/highlight";
+import { compoundFillIndex, isNonSeSensorLine, supportFillIndex } from "@/lib/highlight";
 import { classifyComponent } from "@/lib/spareclass";
 
 interface Health {
@@ -58,9 +58,12 @@ function LinesTable({
       </thead>
       <tbody>
         {lines.map((l, i) => {
-          const hue = compoundFillIndex(l.compoundHue);
+          const supportHue =
+            l.highlightGroup === "cuscinetti" ? supportFillIndex(l.compoundHue) : undefined;
+          const hue = supportHue === undefined ? compoundFillIndex(l.compoundHue) : undefined;
           const classes = [
             isNonSeSensorLine(l) ? "sensor-other" : "",
+            supportHue !== undefined ? `compound-fill support-${supportHue}` : "",
             hue !== undefined ? `compound-fill compound-${hue}` : "",
           ]
             .filter(Boolean)

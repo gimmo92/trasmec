@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import path from "node:path";
 import ExcelJS from "exceljs";
 import type { MachineSection, Offer, ProposalLine } from "@/lib/types";
-import { COMPOUND_FILLS, compoundFillIndex, isNonSeSensorLine } from "@/lib/highlight";
+import { COMPOUND_FILLS, SUPPORT_FILLS, compoundFillIndex, isNonSeSensorLine, supportFillIndex } from "@/lib/highlight";
 import { classifyComponent } from "@/lib/spareclass";
 
 export const runtime = "nodejs";
@@ -109,8 +109,11 @@ async function buildOfferWorkbook(offer: Offer): Promise<ExcelJS.Buffer> {
     if (info.kind) row.getCell(25).value = info.kind;
 
     const hue = compoundFillIndex(l.compoundHue);
+    const supportHue = l.highlightGroup === "cuscinetti" ? supportFillIndex(l.compoundHue) : undefined;
     if (isNonSeSensorLine(l)) {
       paintBlock(row, 5, 25, SENSOR_YELLOW);
+    } else if (supportHue !== undefined) {
+      paintBlock(row, 9, 15, SUPPORT_FILLS[supportHue].argb);
     } else if (hue !== undefined) {
       paintBlock(row, 9, 15, COMPOUND_FILLS[hue].argb);
     }

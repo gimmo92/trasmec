@@ -10,9 +10,20 @@ export const COMPOUND_FILLS = [
   { hex: "#e8dfd6", argb: "FFE8DFD6" },
 ] as const;
 
+/** Sfondi dei supporti, alternati: #E5FFFF e #FFEFFF. */
+export const SUPPORT_FILLS = [
+  { hex: "#E5FFFF", argb: "FFE5FFFF" },
+  { hex: "#FFEFFF", argb: "FFFFEFFF" },
+] as const;
+
 export function compoundFillIndex(hue: number | undefined): number | undefined {
   if (hue === undefined || hue < 0 || !Number.isFinite(hue)) return undefined;
   return hue % COMPOUND_FILLS.length;
+}
+
+export function supportFillIndex(hue: number | undefined): number | undefined {
+  if (hue === undefined || hue < 0 || !Number.isFinite(hue)) return undefined;
+  return hue % SUPPORT_FILLS.length;
 }
 
 /** @deprecated usa compoundFillIndex */
