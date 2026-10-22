@@ -120,6 +120,17 @@ async function buildOfferWorkbook(offer: Offer): Promise<ExcelJS.Buffer> {
     r++;
   };
 
+  const markMachineEnd = () => {
+    const last = ws.getRow(r - 1);
+    for (let col = 5; col <= 25; col++) {
+      const c = last.getCell(col);
+      c.border = {
+        ...c.border,
+        bottom: { style: "medium", color: { argb: "FFE00000" } },
+      };
+    }
+  };
+
   for (const m of offer.machines ?? []) {
     machineIndex += 1;
     const lines: ProposalLine[] = [...m.spares, ...m.motors, ...m.sensors];
@@ -137,6 +148,7 @@ async function buildOfferWorkbook(offer: Offer): Promise<ExcelJS.Buffer> {
     } else {
       for (const l of lines) writeLine(m, l, machineIndex);
     }
+    markMachineEnd();
   }
 
   const lastDataRow = r - 1;
