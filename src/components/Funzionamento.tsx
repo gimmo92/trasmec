@@ -5,7 +5,7 @@ export default function Funzionamento() {
         <h2>Funzionamento</h2>
         <p>
           Regole con cui si costruisce l&apos;offerta lista impianto. La bozza
-          nasce da ordine, distinte, indici, sigle e listino. Claude riscrive
+          nasce da offerta, distinte, indici, sigle e listino. Claude riscrive
           solo le descrizioni: non aggiunge, non toglie e non riordina le righe,
           e non cambia codici né quantità.
         </p>
@@ -14,7 +14,7 @@ export default function Funzionamento() {
       <section>
         <h3>1. Quali macchine entrano</h3>
         <ul>
-          <li>Si legge il PDF dell&apos;ordine. Entrano solo gli item dopo la riga AFTER SALES.</li>
+          <li>Si legge il PDF dell&apos;offerta. Entrano solo gli item dopo la riga AFTER SALES.</li>
           <li>Per ogni codice (BF0509, BF0514, …) serve la distinta caricata in Archivio.</li>
           <li>Le spunte sull&apos;elenco limitano l&apos;analisi alle distinte scelte.</li>
           <li>
@@ -160,7 +160,7 @@ export default function Funzionamento() {
         <h3>8. Motori e sensori</h3>
         <ul>
           <li>Stanno in due sezioni proprie, non dentro i ricambi di distinta.</li>
-          <li>Motori: dalla lista ML collegata all&apos;ordine, solo i codici che iniziano con MR.</li>
+          <li>Motori: dalla lista ML collegata all&apos;offerta, solo i codici che iniziano con MR.</li>
           <li>
             Sensori: tutte le righe della lista SL. Se il codice non inizia con SE,
             la riga resta in offerta ed è evidenziata in giallo.

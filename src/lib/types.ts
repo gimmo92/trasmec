@@ -83,7 +83,7 @@ export interface DocumentoFile {
 
 export const DOC_KIND_LABEL: Record<DocumentoFile["kind"], string> = {
   distinta: "distinta",
-  ordine: "ordine",
+  ordine: "offerta",
   disegno: "disegno",
   "lista-motori": "lista motori",
   "lista-sensori": "lista sensori",

@@ -123,9 +123,9 @@ export async function associaDistinta(distintaName: string, orderNames: string[]
   if (!distinta) throw new Error("File non trovato");
   const wanted = [...new Set(orderNames.map((name) => name.trim()).filter(Boolean))];
   const known = new Set(archivio.ordini.map((order) => order.name));
-  if (wanted.some((name) => !known.has(name))) throw new Error("Ordine non trovato");
+  if (wanted.some((name) => !known.has(name))) throw new Error("Offerta non trovata");
   if (archivio.ordini.length > 0 && wanted.length === 0) {
-    throw new Error("Ogni file va associato ad almeno un ordine");
+    throw new Error("Ogni file va associato ad almeno un'offerta");
   }
   const links = await loadLinks();
   links[distintaName] = { ordini: wanted, manual: true };

@@ -578,7 +578,7 @@ export async function buildSparePartsOffer(
   await prepareApp();
   const docs = await listDocumentiClassificati();
   if (!opts.orderPath) {
-    throw new Error("Seleziona un ordine prima di generare l'offerta.");
+    throw new Error("Seleziona un'offerta prima di generarla.");
   }
   const pdfDoc = docs.find((d) => d.kind === "ordine" && (d.path === opts.orderPath || d.name === opts.orderPath));
   const splDoc =
@@ -587,7 +587,7 @@ export async function buildSparePartsOffer(
     docs.find((d) => d.kind === "listino");
 
   if (!pdfDoc) {
-    throw new Error("Ordine non trovato. Selezionalo di nuovo dall'elenco.");
+    throw new Error("Offerta non trovata. Selezionala di nuovo dall'elenco.");
   }
 
   const { liste } = await readArchivio();
@@ -595,19 +595,19 @@ export async function buildSparePartsOffer(
   const mlDocs = listeOrdine.filter((file) => file.kind === "lista-motori");
   const slDocs = listeOrdine.filter((file) => file.kind === "lista-sensori");
   const offerWarnings: string[] = [];
-  if (!mlDocs.length) offerWarnings.push("Nessuna lista motori associata a questo ordine: carica il file ML nell'Archivio.");
-  if (!slDocs.length) offerWarnings.push("Nessuna lista sensori associata a questo ordine: carica il file SL nell'Archivio.");
+  if (!mlDocs.length) offerWarnings.push("Nessuna lista motori associata a questa offerta: carica il file ML nell'Archivio.");
+  if (!slDocs.length) offerWarnings.push("Nessuna lista sensori associata a questa offerta: carica il file SL nell'Archivio.");
 
   const order = await parseOrderPdf(resolveDocumento(pdfDoc.path));
   const bomFiles = mapBomFiles(docs);
   const orderCodes = order.includedItems.map((item) => item.code.toUpperCase());
   if (!orderCodes.length) {
-    throw new Error(`Nell'ordine ${pdfDoc.name} non ho trovato item dopo AFTER SALES.`);
+    throw new Error(`Nell'offerta ${pdfDoc.name} non ho trovato item dopo AFTER SALES.`);
   }
   const found = orderCodes.filter((code) => bomFiles.has(code));
   if (!found.length) {
     throw new Error(
-      `Nessuna distinta caricata per gli item dell'ordine (${orderCodes.join(", ")}). Caricale nell'Archivio.`
+      `Nessuna distinta caricata per gli item dell'offerta (${orderCodes.join(", ")}). Caricale nell'Archivio.`
     );
   }
 

@@ -64,7 +64,7 @@ export default function Archivio() {
     const has = file.ordini.includes(orderName);
     const next = has ? file.ordini.filter((name) => name !== orderName) : [...file.ordini, orderName];
     if (ordini.length > 0 && next.length === 0) {
-      setError("Ogni file va associato ad almeno un ordine");
+      setError("Ogni file va associato ad almeno un'offerta");
       return;
     }
     setError("");
@@ -94,7 +94,7 @@ export default function Archivio() {
         <div>
           <h2>Archivio</h2>
           <p className="hint">
-            Carica ordini, distinte e liste motori/sensori. Ogni file resta collegato agli ordini
+            Carica offerte, distinte e liste motori/sensori. Ogni file resta collegato alle offerte
             che citano le sue commesse, e puoi cambiare il collegamento con le caselle.
           </p>
         </div>
@@ -111,9 +111,9 @@ export default function Archivio() {
         }}
       />
 
-      <div className="order-filters" role="group" aria-label="Filtra per ordine">
+      <div className="order-filters" role="group" aria-label="Filtra per offerta">
         <button type="button" className={filter ? "" : "on"} onClick={() => setFilter("")}>
-          Tutti gli ordini
+          Tutte le offerte
         </button>
         {ordini.map((order) => (
           <button
@@ -131,7 +131,7 @@ export default function Archivio() {
       {loading && <div className="status">Caricamento…</div>}
 
       {!loading && ordini.length === 0 && (
-        <p className="hint">Nessun ordine. Carica il PDF dell&apos;ordine per raggruppare le distinte.</p>
+        <p className="hint">Nessuna offerta. Carica il PDF dell&apos;offerta per raggruppare le distinte.</p>
       )}
 
       {visibleOrders.map((order) => {
@@ -140,7 +140,7 @@ export default function Archivio() {
           <section key={order.name} className="order-group">
             <h3>{orderTitle(order)}</h3>
             {orderCodesLabel(order) && <p className="hint">{orderCodesLabel(order)}</p>}
-            {rows.length === 0 && <p className="hint">Nessun file associato a questo ordine.</p>}
+            {rows.length === 0 && <p className="hint">Nessun file associato a questa offerta.</p>}
             {rows.map((file) => (
               <DistintaCard
                 key={`${order.name}:${file.name}`}
@@ -155,7 +155,7 @@ export default function Archivio() {
 
       {loose.length > 0 && (
         <section className="order-group">
-          <h3>Senza ordine</h3>
+          <h3>Senza offerta</h3>
           <p className="hint">Associane almeno uno con le caselle qui sotto.</p>
           {loose.map((file) => (
             <DistintaCard

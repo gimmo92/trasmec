@@ -96,7 +96,7 @@ export default function CaricaDocumenti({
         }}
       >
         {busy ? "Classificazione…" : "Trascina qui i file, oppure sceglili"}
-        <span>Ordini PDF, distinte Excel, liste ML/SL e disegni PDF o DWG. Li riconosco dal contenuto.</span>
+        <span>Offerte PDF, distinte Excel, liste ML/SL e disegni PDF o DWG. Li riconosco dal contenuto.</span>
       </button>
       <input
         ref={inputRef}

@@ -212,7 +212,7 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
 
   const generate = useCallback(async () => {
     if (!orderPath) {
-      setError("Seleziona un ordine prima di generare l'offerta.");
+      setError("Seleziona un'offerta prima di generarla.");
       return;
     }
     setGenerating(true);
@@ -286,15 +286,15 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
         </div>
 
         <div className="hint">
-          Seleziona un ordine: leggo gli item dopo AFTER SALES e analizzo le distinte
+          Seleziona un&apos;offerta: leggo gli item dopo AFTER SALES e analizzo le distinte
           con quei codici. Con le spunte limiti l&apos;analisi alle distinte scelte.
         </div>
         <div className="doc-list">
           {loadingDocs && <div className="status">Caricamento…</div>}
 
-          <div className="section-title">Ordini ({ordini.length})</div>
+          <div className="section-title">Offerte ({ordini.length})</div>
           {ordini.length === 0 && !loadingDocs && (
-            <div className="hint">Nessun ordine riconosciuto.</div>
+            <div className="hint">Nessuna offerta riconosciuta.</div>
           )}
           {ordini.map((d) => (
             <div
@@ -307,16 +307,16 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
                 <div className="name">{d.name}</div>
                 <div className="sub">{formatSize(d.sizeBytes)}</div>
               </div>
-              <span className="badge ordine">ordine</span>
+              <span className="badge ordine">offerta</span>
             </div>
           ))}
 
           <div className="section-title">Distinte base ({distinte.length})</div>
           {!orderPath && !loadingDocs && (
-            <div className="hint">Seleziona un ordine per vedere le distinte.</div>
+            <div className="hint">Seleziona un&apos;offerta per vedere le distinte.</div>
           )}
           {orderPath && distinte.length === 0 && !loadingDocs && (
-            <div className="hint">Nessuna distinta associata a questo ordine.</div>
+            <div className="hint">Nessuna distinta associata a questa offerta.</div>
           )}
           {distinte.map((d) => (
             <div
@@ -340,7 +340,7 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
             <>
               <div className="section-title">Motori e sensori ({liste.length})</div>
               {liste.length === 0 && !loadingDocs && (
-                <div className="hint">Nessuna lista motori o sensori associata a questo ordine.</div>
+                <div className="hint">Nessuna lista motori o sensori associata a questa offerta.</div>
               )}
               {liste.map((d) => (
                 <div key={d.path} className="doc static">
@@ -382,7 +382,7 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
                 <span className="spinner" /> Generazione…
               </>
             ) : !orderPath ? (
-              "Seleziona un ordine"
+              "Seleziona un'offerta"
             ) : selected.size > 0 ? (
               `Genera offerta (${selected.size})`
             ) : (
@@ -441,7 +441,7 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
 
         {!offer && !error && (
           <div className="empty">
-            Seleziona un ordine, poi premi <strong>Genera offerta</strong>:
+            Seleziona un&apos;offerta, poi premi <strong>Genera offerta</strong>:
             leggo quel documento, prendo gli item dopo <em>AFTER SALES</em> e
             uso le distinte associate.
           </div>
@@ -466,7 +466,7 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
 
             {offer.machines.length === 0 && (
               <div className="warn">
-                Nessuna macchina con distinta disponibile tra gli item dell&apos;ordine.
+                Nessuna macchina con distinta disponibile tra gli item dell&apos;offerta.
               </div>
             )}
 
