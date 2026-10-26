@@ -639,10 +639,14 @@ export async function buildSparePartsOffer(
       };
 
   const motorsByBase: Map<string, ProposalLine[]> = groupByJobBase(
-    mlDocs.flatMap((file) => parseMotorList(resolveDocumento(file.path)))
+    (
+      await Promise.all(mlDocs.map((file) => parseMotorList(resolveDocumento(file.path))))
+    ).flat()
   );
   const sensorsByBase: Map<string, ProposalLine[]> = groupByJobBase(
-    slDocs.flatMap((file) => parseSensorList(resolveDocumento(file.path)))
+    (
+      await Promise.all(slDocs.map((file) => parseSensorList(resolveDocumento(file.path))))
+    ).flat()
   );
 
   // "TP" nel nome = scheda tappeto, non una catena

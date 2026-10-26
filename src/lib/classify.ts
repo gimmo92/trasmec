@@ -22,7 +22,7 @@ interface CacheEntry extends ClassifiedDoc {
 }
 
 /** Va alzato quando cambiano le regole, così i file già visti vengono riclassificati. */
-const CACHE_VERSION = 5;
+const CACHE_VERSION = 6;
 
 const DATA_FILE = path.join(process.cwd(), "data", "classificazione.json");
 const CLOUD_PATH = "config/classificazione.json";
@@ -34,14 +34,24 @@ function orderCodes(text: string): string[] {
   return parseOrderText(text).includedItems.map((item) => item.code);
 }
 
+/** Motor list / sensor list anche quando il file è un PDF (`…-ML.pdf`). */
+export function listKindFromName(name: string): "lista-motori" | "lista-sensori" | null {
+  const n = name.toLowerCase();
+  if (n.includes("-ml") || n.includes("motor list") || n.includes("lista motor")) return "lista-motori";
+  if (n.includes("-sl") || n.includes("sensor list") || n.includes("lista sensor")) return "lista-sensori";
+  return null;
+}
+
 /** Classificazione di riserva quando il contenuto non si lascia leggere. */
 export function kindFromName(name: string): ClassifiedDoc {
   const n = name.toLowerCase();
   const code = jobCode(name);
+  const listed = listKindFromName(name);
+  if (listed) return { kind: listed };
   if (n.endsWith(".dwg")) return { kind: "disegno", code };
   if (n.endsWith(".pdf")) return code ? { kind: "disegno", code } : { kind: "altro" };
-  if (n.includes("-ml") || n.includes("motor")) return { kind: "lista-motori" };
-  if (n.includes("-sl") || n.includes("sensor")) return { kind: "lista-sensori" };
+  if (n.includes("motor")) return { kind: "lista-motori" };
+  if (n.includes("sensor")) return { kind: "lista-sensori" };
   if (n.includes("spare") || n.includes("listino") || n.includes("price")) return { kind: "listino" };
   if (/^b[a-z]\d{4}/i.test(name) || n.endsWith(".xlsm")) return { kind: "distinta", code };
   return { kind: "altro", code };
@@ -119,11 +129,15 @@ function classifyExcel(filePath: string, name: string): ClassifiedDoc {
 }
 
 async function classifyPdf(filePath: string, name: string): Promise<ClassifiedDoc> {
+  const namedList = listKindFromName(name);
+  if (namedList) return { kind: namedList };
   const text = (await extractPdfText(filePath)).slice(0, 40000);
   const codes = orderCodes(text);
   if (/AFTER\s*SALES/i.test(text) || /NR\.\s*DOCUMENTO/i.test(text)) {
     return { kind: "ordine", code: codes[0], codes };
   }
+  if (/motor\s*list/i.test(text) && !/sensor\s*list/i.test(text)) return { kind: "lista-motori" };
+  if (/sensor\s*list/i.test(text) && !/motor\s*list/i.test(text)) return { kind: "lista-sensori" };
   // Disegno: codice commessa nel titolo, senza le voci di un ordine.
   const titleCode = text.match(/(?:job\s*nr|numero\s*commessa)\.?\s*:?\s*(B[A-Z]\d{4})/i)?.[1];
   const drawingCode = jobCode(name) ?? titleCode?.toUpperCase();
@@ -137,9 +151,9 @@ async function classifyPdf(filePath: string, name: string): Promise<ClassifiedDo
   return { kind: "altro" };
 }
 
-/** Commesse citate da una lista motori/sensori: servono per collegarla all'ordine. */
-function listCodes(filePath: string, kind: DocKind): string[] {
-  const rows = kind === "lista-motori" ? parseMotorList(filePath) : parseSensorList(filePath);
+/** Commesse citate da una lista motori/sensori: servono per collegarla all'offerta. */
+async function listCodes(filePath: string, kind: DocKind): Promise<string[]> {
+  const rows = kind === "lista-motori" ? await parseMotorList(filePath) : await parseSensorList(filePath);
   return [...new Set(rows.map((row) => row.jobBase).filter(isJobCode))];
 }
 
@@ -148,15 +162,15 @@ export async function classifyFile(filePath: string, name: string): Promise<Clas
   const ext = path.extname(name).toLowerCase();
   let meta: ClassifiedDoc;
   try {
-    if (ext === ".pdf") return await classifyPdf(filePath, name);
-    if (ext !== ".xlsx" && ext !== ".xlsm" && ext !== ".xls") return kindFromName(name);
-    meta = classifyExcel(filePath, name);
+    if (ext === ".pdf") meta = await classifyPdf(filePath, name);
+    else if (ext === ".xlsx" || ext === ".xlsm" || ext === ".xls") meta = classifyExcel(filePath, name);
+    else meta = kindFromName(name);
   } catch {
     meta = kindFromName(name);
   }
   if (meta.kind === "lista-motori" || meta.kind === "lista-sensori") {
     try {
-      const codes = listCodes(filePath, meta.kind);
+      const codes = await listCodes(filePath, meta.kind);
       return { kind: meta.kind, code: codes[0], codes };
     } catch {
       return meta;

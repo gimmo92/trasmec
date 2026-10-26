@@ -67,6 +67,51 @@ function installDomMatrix() {
   g.DOMMatrix = DOMMatrixPolyfill;
 }
 
+export interface PdfTextCell {
+  x: number;
+  y: number;
+  text: string;
+}
+
+/** Testo con la posizione in pagina. Serve per le liste motori/sensori in PDF. */
+export async function extractPdfCells(filePath: string): Promise<PdfTextCell[]> {
+  installDomMatrix();
+  await import("pdfjs-dist/legacy/build/pdf.worker.mjs" as string);
+  const pdfjs = (await import("pdfjs-dist/legacy/build/pdf.mjs" as string)) as {
+    getDocument: (src: { data: Uint8Array; useSystemFonts?: boolean }) => {
+      promise: Promise<{
+        numPages: number;
+        getPage: (n: number) => Promise<{ getTextContent: () => Promise<{ items: unknown[] }> }>;
+        destroy?: () => Promise<void>;
+      }>;
+    };
+  };
+  const data = new Uint8Array(fs.readFileSync(filePath));
+  const doc = await pdfjs.getDocument({ data, useSystemFonts: true }).promise;
+  const cells: PdfTextCell[] = [];
+  try {
+    for (let pageNo = 1; pageNo <= doc.numPages; pageNo++) {
+      const page = await doc.getPage(pageNo);
+      const content = await page.getTextContent();
+      for (const raw of content.items) {
+        if (!raw || typeof raw !== "object" || !("str" in raw)) continue;
+        const item = raw as { str?: string; transform?: number[] };
+        const text = String(item.str ?? "").trim();
+        const transform = item.transform;
+        if (!text || !transform) continue;
+        cells.push({
+          x: transform[4] ?? 0,
+          y: (transform[5] ?? 0) + (pageNo - 1) * 100000,
+          text,
+        });
+      }
+    }
+  } finally {
+    await doc.destroy?.();
+  }
+  return cells;
+}
+
 /** Estrae il testo dal PDF usando pdf-parse (v2). */
 export async function extractPdfText(filePath: string): Promise<string> {
   installDomMatrix();
