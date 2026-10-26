@@ -116,7 +116,8 @@ function isUcfAccessoryMention(desc: string, token: string): boolean {
 
 function matchIndex(
   desc: string,
-  indices: SpareIndexRow[]
+  indices: SpareIndexRow[],
+  partNumber = ""
 ): { row: SpareIndexRow; token: string; family: string } | null {
   let best: {
     row: SpareIndexRow;
@@ -125,23 +126,26 @@ function matchIndex(
     len: number;
     specificity: number;
   } | null = null;
+  const pn = partNumber.trim().toUpperCase();
   for (const row of indices) {
     const tokens = indexTokens(row.indice);
     for (const token of tokens) {
-      if (!tokenInDescription(desc, token)) continue;
-      if (isUcfAccessoryMention(desc, token)) continue;
+      const onCode = pn.length > 0 && pn === token.toUpperCase();
+      const inDesc = tokenInDescription(desc, token);
+      if (!onCode && !inDesc) continue;
+      if (!onCode && isUcfAccessoryMention(desc, token)) continue;
       if (
         /chain\s*coupling|giunto/i.test(desc) &&
         /^(CHAIN|TRASPORT|CONVEYING)$/i.test(token)
       ) {
         continue;
       }
-      const specificity = token.length * 100 - tokens.length;
+      const specificity = (onCode ? 10000 : 0) + token.length * 100 - tokens.length;
       if (!best || specificity > best.specificity) {
         best = {
           row,
           token,
-          family: familyToken(desc, token),
+          family: inDesc ? familyToken(desc, token) : "",
           len: token.length,
           specificity,
         };
@@ -338,7 +342,7 @@ function uniqueHits(
       opts.skipSigla || row.source === "config" || row.source === "scheda";
     if (!skipSigla && !isSparePartCode(pn)) continue;
     const desc = bomDescription(row);
-    const m = matchIndex(desc, indices);
+    const m = matchIndex(desc, indices, pn);
     if (!m) continue;
     const qty = parseNum(row.qty) ?? 0;
     const prev = acc.get(pn);
@@ -462,7 +466,7 @@ function linesFromGroup(
  * Offerta ricambi:
  *  - item ordine dopo AFTER SALES → distinta
  *  - filtro 1: part number che inizia con una sigla (tab Sigle spare parts)
- *  - filtro 2: descrizione che contiene un indice della tabella
+ *  - filtro 2: descrizione che contiene un indice, oppure part number uguale all'indice
  *  - codici univoci; listino se Spare Parts List = SI, altrimenti codice distinta
  *  - Composto: accorpa le istanze (es. body/ringer TM100CLC → descrizione da struttura)
  *  - + gruppo cuscinetti: sotto l'assieme, cuscinetti gialli della scheda listino

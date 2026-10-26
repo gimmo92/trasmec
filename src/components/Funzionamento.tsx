@@ -53,8 +53,9 @@ export default function Funzionamento() {
           </li>
           <li>
             <strong>Indici.</strong> La descrizione deve contenere un token della
-            tab Indici dei ricambi. Vince il token più specifico. Un indice vuoto
-            non aggancia niente: il pezzo non entra.
+            tab Indici dei ricambi, oppure il part number è uguale all&apos;indice
+            (es. SC0059). Vince il token più specifico. Un indice vuoto non
+            aggancia niente: il pezzo non entra.
           </li>
           <li>
             «Chain coupling» e «giunto» non vengono letti come catena di trasporto.
