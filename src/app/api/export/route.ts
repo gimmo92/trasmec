@@ -123,6 +123,7 @@ async function buildOfferWorkbook(offer: Offer): Promise<ExcelJS.Buffer> {
     }
   };
 
+  let lineNo = 1;
   for (const m of offer.machines ?? []) {
     const lines: ProposalLine[] = [...m.spares, ...m.motors, ...m.sensors];
     if (!lines.length) {
@@ -137,7 +138,7 @@ async function buildOfferWorkbook(offer: Offer): Promise<ExcelJS.Buffer> {
       row.getCell(19).numFmt = "General";
       r++;
     } else {
-      lines.forEach((l, i) => writeLine(m, l, i + 1));
+      for (const l of lines) writeLine(m, l, lineNo++);
     }
     markMachineEnd();
   }

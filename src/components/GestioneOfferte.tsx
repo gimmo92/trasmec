@@ -123,9 +123,11 @@ function LinesTable({
 
 function MachineBlock({
   m,
+  start,
   onRemoveLine,
 }: {
   m: MachineSection;
+  start: number;
   onRemoveLine: (kind: LineKind, index: number) => void;
 }) {
   const pos = (m.layoutPosition || "").replace(/^POS\.\s*/i, "").trim();
@@ -145,7 +147,7 @@ function MachineBlock({
       <LinesTable
         lines={m.spares}
         machine={m}
-        start={1}
+        start={start}
         onRemove={(i) => onRemoveLine("spares", i)}
       />
 
@@ -153,7 +155,7 @@ function MachineBlock({
       <LinesTable
         lines={m.motors}
         machine={m}
-        start={m.spares.length + 1}
+        start={start + m.spares.length}
         onRemove={(i) => onRemoveLine("motors", i)}
       />
 
@@ -161,7 +163,7 @@ function MachineBlock({
       <LinesTable
         lines={m.sensors}
         machine={m}
-        start={m.spares.length + m.motors.length + 1}
+        start={start + m.spares.length + m.motors.length}
         onRemove={(i) => onRemoveLine("sensors", i)}
       />
     </div>
@@ -500,13 +502,22 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
               </div>
             )}
 
-            {offer.machines.map((m) => (
-              <MachineBlock
-                key={m.itemCode}
-                m={m}
-                onRemoveLine={(kind, index) => removeLine(m.itemCode, kind, index)}
-              />
-            ))}
+            {offer.machines.map((m, index) => {
+              const start = offer.machines
+                .slice(0, index)
+                .reduce(
+                  (n, prev) => n + prev.spares.length + prev.motors.length + prev.sensors.length,
+                  1
+                );
+              return (
+                <MachineBlock
+                  key={m.itemCode}
+                  m={m}
+                  start={start}
+                  onRemoveLine={(kind, lineIndex) => removeLine(m.itemCode, kind, lineIndex)}
+                />
+              );
+            })}
 
             {(offerWarnings.length > 0 || offer.machines.some((m) => m.warnings.length > 0)) && (
               <div className="offer-warnings">
