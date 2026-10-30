@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DOC_KIND_LABEL, type DocumentoFile, type MachineSection, type Offer, type ProposalLine } from "@/lib/types";
 import { compoundFillIndex, isNonSeSensorLine, supportFillIndex } from "@/lib/highlight";
+import { machineLabel, offerUnit, projectLabel } from "@/lib/machinelabel";
 import { classifyComponent } from "@/lib/spareclass";
 
 interface Health {
@@ -30,27 +31,38 @@ function formatQty(qty: number | null | undefined): string {
 
 function LinesTable({
   lines,
+  machine,
+  start,
   onRemove,
 }: {
   lines: ProposalLine[];
+  machine: MachineSection;
+  start: number;
   onRemove: (index: number) => void;
 }) {
   if (!lines.length)
     return <div className="muted-row">— nessuno —</div>;
+  const project = projectLabel(machine);
+  const description = machineLabel(machine);
   return (
     <table>
       <thead>
         <tr>
-          <th style={{ width: "18%" }}>Codice</th>
-          <th>Descrizione</th>
-          <th style={{ width: "50px" }}>U.M.</th>
-          <th style={{ width: "110px" }}>Installed Qty</th>
-          <th style={{ width: "150px" }}>Recommended Storage</th>
-          <th style={{ width: "80px" }}>Delivery</th>
-          <th style={{ width: "70px" }} title="*** NECESSARY  ** RECOMMENDED  * USEFUL">
+          <th style={{ width: "42px" }}>N.</th>
+          <th style={{ width: "140px" }}>Project</th>
+          <th style={{ width: "160px" }} title="Macchina da COC o distinta">
+            Description
+          </th>
+          <th style={{ width: "110px" }}>Cod.</th>
+          <th title="Descrizione componente">Description</th>
+          <th style={{ width: "48px" }}>U.M.</th>
+          <th style={{ width: "90px" }}>Installed Qty</th>
+          <th style={{ width: "110px" }}>Suggested Qty</th>
+          <th style={{ width: "72px" }}>Delivery</th>
+          <th style={{ width: "56px" }} title="*** NECESSARY  ** RECOMMENDED  * USEFUL">
             ***
           </th>
-          <th style={{ width: "50px" }} title="WEAR PART (W) / SPARE PART (S)">
+          <th style={{ width: "44px" }} title="WEAR PART (W) / SPARE PART (S)">
             W/S
           </th>
           <th className="row-del" />
@@ -71,6 +83,9 @@ function LinesTable({
           const info = classifyComponent(l);
           return (
           <tr key={i} className={classes || undefined}>
+            <td className="num">{start + i}</td>
+            <td>{project}</td>
+            <td>{description}</td>
             <td>
               {l.code}
               {l.bomCode ? (
@@ -78,10 +93,10 @@ function LinesTable({
               ) : null}
             </td>
             <td>
-              {l.descriptionIT || l.descriptionEN || ""}
+              {l.descriptionEN || l.descriptionIT || ""}
               {l.atex ? <span className="tag">{l.atex}</span> : null}
             </td>
-            <td className="num">{(l.um || "NR").toUpperCase()}</td>
+            <td className="num">{offerUnit(l.um)}</td>
             <td className="num">{formatQty(l.installedQty)}</td>
             <td className="num">{formatQty(l.recommendedQty)}</td>
             <td className="num">{info.deliveryDays ?? ""}</td>
@@ -127,13 +142,28 @@ function MachineBlock({
       {m.description ? <div className="mdesc">{m.description}</div> : null}
 
       <div className="sub">SPARE PARTS ({m.spares.length})</div>
-      <LinesTable lines={m.spares} onRemove={(i) => onRemoveLine("spares", i)} />
+      <LinesTable
+        lines={m.spares}
+        machine={m}
+        start={1}
+        onRemove={(i) => onRemoveLine("spares", i)}
+      />
 
       <div className="sub">MOTORS ({m.motors.length})</div>
-      <LinesTable lines={m.motors} onRemove={(i) => onRemoveLine("motors", i)} />
+      <LinesTable
+        lines={m.motors}
+        machine={m}
+        start={m.spares.length + 1}
+        onRemove={(i) => onRemoveLine("motors", i)}
+      />
 
       <div className="sub">SENSORS ({m.sensors.length})</div>
-      <LinesTable lines={m.sensors} onRemove={(i) => onRemoveLine("sensors", i)} />
+      <LinesTable
+        lines={m.sensors}
+        machine={m}
+        start={m.spares.length + m.motors.length + 1}
+        onRemove={(i) => onRemoveLine("sensors", i)}
+      />
     </div>
   );
 }

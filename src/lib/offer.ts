@@ -273,6 +273,47 @@ function resolveSellable(
   return { code: primary, mapped: false };
 }
 
+/** CU1047: confronto senza maiuscole né spazi/punteggiatura. */
+function isCu1047(code: string): boolean {
+  return normKey(code) === "CU1047";
+}
+
+const GENERIC_BEARING = /^(CUSCINETTO|CUSCINETTI|BEARING|BEARINGS)$/;
+
+/**
+ * Tra i cuscinetti della spare parts list tiene solo quello indicato
+ * dalla riga BOM CU1047 (codice o descrizione). Non aggiunge l'altro.
+ */
+function pickCu1047Bearing(bearings: CatalogBearing[], group: Hit[]): CatalogBearing | null {
+  const rows = group.filter((h) => isCu1047(h.pn) || isCu1047(h.desc));
+  if (!rows.length || !bearings.length) return null;
+  let best: { bearing: CatalogBearing; score: number } | null = null;
+  for (const bearing of bearings) {
+    const bCode = normKey(bearing.code);
+    const bDesc = normKey(bearing.description);
+    let score = 0;
+    for (const row of rows) {
+      const pn = normKey(row.pn);
+      const desc = normKey(row.desc);
+      if (bCode && bCode === pn) score = Math.max(score, 100);
+      if (bCode && bCode !== "CU1047" && desc.includes(bCode)) score = Math.max(score, 80);
+      if (bDesc && desc && bDesc === desc) score = Math.max(score, 70);
+      if (
+        bDesc &&
+        desc &&
+        !GENERIC_BEARING.test(bDesc) &&
+        !GENERIC_BEARING.test(desc) &&
+        (desc.includes(bDesc) || bDesc.includes(desc))
+      ) {
+        const overlap = desc.includes(bDesc) ? bDesc.length : desc.length;
+        if (overlap >= 4) score = Math.max(score, Math.min(69, 40 + overlap));
+      }
+    }
+    if (score > 0 && (!best || score > best.score)) best = { bearing, score };
+  }
+  return best?.bearing ?? null;
+}
+
 function bearingsFor(
   pns: string[],
   family: string,
@@ -435,16 +476,21 @@ function linesFromGroup(
   ];
 
   if (hasCuscinetti(indexRow.gestione) && useList) {
-    const brgs = bearingsFor(pns, family, code, catalog);
-    if (!brgs.length) {
+    const fromList = bearingsFor(pns, family, code, catalog);
+    const cu1047 = group.some((h) => isCu1047(h.pn) || isCu1047(h.desc)) || isCu1047(code);
+    const brgs = cu1047
+      ? [pickCu1047Bearing(fromList, group)].filter((b): b is CatalogBearing => Boolean(b))
+      : fromList;
+    if (!fromList.length) {
       warnings.push(
         `Gruppo cuscinetti non trovato nel listino per ${code} (${family}).`
       );
-    } else {
+    } else if (brgs.length) {
       lines[0].highlightGroup = "cuscinetti";
       lines[0].recommendedQty = null;
     }
     for (const b of brgs) {
+      if (normKey(b.code) === normKey(lines[0].code)) continue;
       const bQty = (b.qty || 1) * (installed || 1);
       lines.push(
         toLine({
@@ -495,6 +541,66 @@ function chainStorage(installed: number, um: string, pitchMm: number): { qty: nu
  */
 function isScraperItem(code: string, description: string): boolean {
   return /^CT0003$/i.test(code) || /\b(scraper|scrap|pal[ae]|paddle)\b/i.test(`${code} ${description}`);
+}
+
+function lineBlob(line: ProposalLine): string {
+  return `${line.code} ${line.descriptionEN ?? ""} ${line.descriptionIT ?? ""} ${line.notes ?? ""}`;
+}
+
+function isScraperLine(line: ProposalLine): boolean {
+  return isScraperItem(line.code, lineBlob(line));
+}
+
+/** Catena di trasporto della commessa, non il giunto a catena. */
+function isChainLine(line: ProposalLine): boolean {
+  if (isScraperLine(line)) return false;
+  const text = lineBlob(line);
+  if (/coupling|giunto/i.test(text)) return false;
+  return /\b(chain|catena)\b/i.test(text);
+}
+
+/**
+ * Lo scraper della commessa finisce subito sotto la sua catena.
+ * Stesso compound, oppure il codice catena nelle note; altrimenti la catena
+ * di trasporto di questa distinta. Non duplica la riga.
+ */
+function placeScrapersUnderChain(spares: ProposalLine[]): ProposalLine[] {
+  if (!spares.some(isScraperLine) || !spares.some(isChainLine)) return spares;
+  const scrapers: ProposalLine[] = [];
+  const rest: ProposalLine[] = [];
+  for (const line of spares) {
+    if (isScraperLine(line)) scrapers.push(line);
+    else rest.push(line);
+  }
+  const chainIndexes = rest.map((line, i) => (isChainLine(line) ? i : -1)).filter((i) => i >= 0);
+  const targetFor = (scraper: ProposalLine): number => {
+    if (scraper.compoundHue !== undefined) {
+      const byHue = chainIndexes.find((i) => rest[i].compoundHue === scraper.compoundHue);
+      if (byHue !== undefined) return byHue;
+    }
+    const note = lineBlob(scraper).toUpperCase();
+    const byCode = chainIndexes.find((i) => {
+      const code = rest[i].code.toUpperCase();
+      return code.length >= 3 && note.includes(code);
+    });
+    if (byCode !== undefined) return byCode;
+    const transport = chainIndexes.filter((i) => /^(m|mt|mm)$/i.test((rest[i].um ?? "").trim()));
+    return (transport.length ? transport : chainIndexes)[0];
+  };
+  const grouped = new Map<number, ProposalLine[]>();
+  for (const scraper of scrapers) {
+    const idx = targetFor(scraper);
+    const list = grouped.get(idx) ?? [];
+    list.push(scraper);
+    grouped.set(idx, list);
+  }
+  const out: ProposalLine[] = [];
+  rest.forEach((line, i) => {
+    out.push(line);
+    const extra = grouped.get(i);
+    if (extra) out.push(...extra);
+  });
+  return out;
 }
 
 function applyDrawings(
@@ -707,6 +813,7 @@ export async function buildSparePartsOffer(
         .filter((info): info is DrawingInfo => Boolean(info)),
       parsed.format !== "config" || doubleChain
     );
+    const orderedSpares = placeScrapersUnderChain(spares);
 
     const section: MachineSection = {
       itemCode: base,
@@ -720,7 +827,7 @@ export async function buildSparePartsOffer(
           ? parsed.header.atexConfig
           : undefined,
       bomFile,
-      spares,
+      spares: orderedSpares,
       motors: motorsByBase.get(base) ?? [],
       sensors: sensorsByBase.get(base) ?? [],
       warnings,

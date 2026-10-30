@@ -4,6 +4,7 @@ import ExcelJS from "exceljs";
 import type { MachineSection, Offer, ProposalLine } from "@/lib/types";
 import { COMPOUND_FILLS, SUPPORT_FILLS, compoundFillIndex, isNonSeSensorLine, supportFillIndex } from "@/lib/highlight";
 import { classifyComponent } from "@/lib/spareclass";
+import { machineLabel, offerUnit, projectLabel } from "@/lib/machinelabel";
 
 export const runtime = "nodejs";
 
@@ -38,15 +39,7 @@ function applySnapshot(row: ExcelJS.Row, snap: RowSnapshot) {
 }
 
 function machineDescription(m: MachineSection): string {
-  return m.machineType || m.description || m.jobNr || "";
-}
-
-/** Codice macchina e, se c'è nel COC, la posizione: "BF0509 POS. 14.050". */
-function projectLabel(m: MachineSection): string {
-  const code = m.jobNr || m.itemCode || "";
-  const pos = (m.layoutPosition || "").replace(/^POS\.\s*/i, "").trim();
-  if (code && pos) return `${code} POS. ${pos}`;
-  return code;
+  return machineLabel(m);
 }
 
 function paintBlock(row: ExcelJS.Row, from: number, to: number, argb: string) {
@@ -79,18 +72,18 @@ async function buildOfferWorkbook(offer: Offer): Promise<ExcelJS.Buffer> {
   internal._rows.length = 12;
 
   let r = 13;
-  let machineIndex = 0;
 
-  const writeLine = (m: MachineSection, l: ProposalLine, pos: number) => {
+  const writeLine = (m: MachineSection, l: ProposalLine, lineNo: number) => {
     const row = ws.getRow(r);
     applySnapshot(row, proto);
 
-    row.getCell(6).value = pos;
+    // F non ha intestazione ITEM: è la colonna stretta del progressivo, prima di PROJECT.
+    row.getCell(6).value = lineNo;
     row.getCell(7).value = projectLabel(m);
     row.getCell(8).value = machineDescription(m);
     row.getCell(9).value = l.code;
     row.getCell(11).value = l.descriptionEN || l.descriptionIT || "";
-    const um = !l.um || l.um.toUpperCase() === "NR" ? "PZ" : l.um;
+    const um = offerUnit(l.um);
     row.getCell(16).value = um;
     row.getCell(17).value = l.installedQty;
     const sug = row.getCell(19);
@@ -98,9 +91,8 @@ async function buildOfferWorkbook(offer: Offer): Promise<ExcelJS.Buffer> {
       l.recommendedQty === null || l.recommendedQty === undefined
         ? null
         : l.recommendedQty;
-    const unitFmt = `General" ${um.toUpperCase()}"`;
-    row.getCell(17).numFmt = unitFmt;
-    sug.numFmt = unitFmt;
+    row.getCell(17).numFmt = "General";
+    sug.numFmt = "General";
     row.getCell(22).value = { formula: `(T${r}-(T${r}*U${r}))*S${r}` };
 
     const info = classifyComponent(l);
@@ -132,12 +124,11 @@ async function buildOfferWorkbook(offer: Offer): Promise<ExcelJS.Buffer> {
   };
 
   for (const m of offer.machines ?? []) {
-    machineIndex += 1;
     const lines: ProposalLine[] = [...m.spares, ...m.motors, ...m.sensors];
     if (!lines.length) {
       const row = ws.getRow(r);
       applySnapshot(row, proto);
-      row.getCell(6).value = machineIndex;
+      row.getCell(6).value = null;
       row.getCell(7).value = projectLabel(m);
       row.getCell(8).value = machineDescription(m);
       row.getCell(11).value = "\u2014 nessun componente \u2014";
@@ -146,7 +137,7 @@ async function buildOfferWorkbook(offer: Offer): Promise<ExcelJS.Buffer> {
       row.getCell(19).numFmt = "General";
       r++;
     } else {
-      for (const l of lines) writeLine(m, l, machineIndex);
+      lines.forEach((l, i) => writeLine(m, l, i + 1));
     }
     markMachineEnd();
   }
