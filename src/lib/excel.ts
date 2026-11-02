@@ -485,6 +485,62 @@ export function extractSpareParts(grids: Record<string, Grid>): {
   return { lines, warnings, sheetUsed: sheetName };
 }
 
+const MACHINE_WORD =
+  /macchin|machine|maschine|maquin|maszyn|makine|maskin|mashin/;
+const TYPE_WORD = /(?:^|[^a-z])(?:tipo|type|typ)(?:[^a-z]|$)|typ$/;
+
+/** Etichetta «tipo macchina» in qualunque lingua (Machine type, Maschinentyp, …). */
+function isMachineTypeLabel(v: unknown): boolean {
+  const s = norm(v).normalize("NFD").replace(/\p{M}/gu, "");
+  if (!s || s.length > 40) return false;
+  if (/\b(code|codice|serial|matricol|disegno|drawing|year|anno)\b/.test(s)) return false;
+  return MACHINE_WORD.test(s) && TYPE_WORD.test(s);
+}
+
+function plausibleMachineName(v: string): boolean {
+  const s = v.trim();
+  if (s.length < 2 || s.length > 80) return false;
+  if (/^\d{4}$/.test(s)) return false;
+  if (/^B[A-Z]\d{4}/i.test(s)) return false;
+  if (!/[A-Za-z]/.test(s)) return false;
+  if (isMachineTypeLabel(s)) return false;
+  return true;
+}
+
+/**
+ * Nome macchina sulla targa: cella a fianco di «tipo macchina».
+ * Prima la seconda pagina e i fogli targa/etichetta, poi gli altri.
+ */
+function findPlateMachineType(grids: Record<string, Grid>): string | undefined {
+  const names = Object.keys(grids);
+  const ranked = names
+    .map((name, index) => ({ name, index }))
+    .sort((a, b) => plateSheetRank(a.name, a.index) - plateSheetRank(b.name, b.index));
+
+  for (const { name } of ranked) {
+    const grid = grids[name] ?? [];
+    for (let r = 0; r < grid.length; r++) {
+      const row = grid[r] ?? [];
+      for (let c = 0; c < row.length; c++) {
+        if (!isMachineTypeLabel(row[c])) continue;
+        for (let cc = c + 1; cc < row.length; cc++) {
+          if (isEmpty(row[cc])) continue;
+          const value = cellStr(row[cc]);
+          if (!plausibleMachineName(value)) break;
+          return value;
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
+function plateSheetRank(name: string, index: number): number {
+  if (index === 1 || name.trim() === "2") return 0;
+  if (/label|targa|targhetta|data\s*plate|\bplate\b/i.test(name)) return 1;
+  return 2;
+}
+
 /** Mappa campo intestazione -> possibili etichette nei fogli Excel. */
 const HEADER_LABELS: Record<keyof BomHeader & string, string[]> = {
   jobNr: ["job nr.", "job nr", "job"],
@@ -537,6 +593,7 @@ function extractHeader(grids: Record<string, Grid>): BomHeader {
   for (const [field, labels] of Object.entries(HEADER_LABELS)) {
     header[field] = find(labels);
   }
+  header.plateType = findPlateMachineType(grids);
   return header;
 }
 

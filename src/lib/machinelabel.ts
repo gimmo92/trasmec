@@ -1,13 +1,27 @@
 import type { MachineSection } from "./types";
 
+/** Lunghezza sulla riga commessa del COC: "L=18800" o "L=6150+6150". */
+function cocLength(description?: string): string | undefined {
+  const m = (description || "").match(/L\s*=\s*(\d+(?:\s*\+\s*\d+)*)/i);
+  return m?.[1].replace(/\s+/g, "");
+}
+
 /**
- * DESCRIPTION della macchina (colonna H del template): testo da COC o distinta,
- * per esempio "TC 40HP – L=18800".
+ * Prima DESCRIPTION (colonna H): tipo macchina letto in distinta e, se c'è,
+ * la lunghezza della riga commessa nel COC. Esempio "TKK40 BRZ STD-C – L=22000".
  */
 export function machineLabel(
   m: Pick<MachineSection, "description" | "machineType" | "jobNr">
 ): string {
-  const blob = [m.description, m.machineType].filter(Boolean).join("\n");
+  const type = (m.machineType || "").trim();
+  const typeOk = Boolean(type) && !/^B[A-Z]\d{4}$/i.test(type);
+  const len = cocLength(m.description);
+  if (typeOk) {
+    if (/L\s*=/i.test(type) || !len) return type;
+    return `${type} – L=${len}`;
+  }
+
+  const blob = m.description || "";
   const typed = blob.match(
     /\b([A-Z]{1,5}\s*\d{1,4}\s*[A-Z]{0,4})\s*[–—-]\s*L\s*=\s*(\d+)/i
   );
@@ -15,10 +29,14 @@ export function machineLabel(
     const name = typed[1].replace(/\s+/g, " ").trim();
     return `${name} – L=${typed[2]}`;
   }
-  const len = blob.match(/L\s*=\s*(\d+)/i);
-  const type = (m.machineType || "").trim();
-  const typeOk = Boolean(type) && !/^B[A-Z]\d{4}$/i.test(type);
-  if (typeOk && len && !/L\s*=/i.test(type)) return `${type} – L=${len[1]}`;
+  if (len) {
+    const chunks = blob
+      .split(/\r?\n| {2,}/)
+      .map((s) => s.replace(/\s+/g, " ").trim())
+      .filter((s) => s && !/L\s*=/i.test(s) && !/^B[A-Z]\d{4}$/i.test(s));
+    const name = chunks[0]?.replace(/\s*[–—-]\s*$/, "").trim();
+    if (name) return `${name} – L=${len}`;
+  }
 
   const chunks = (m.description || "")
     .split(/\r?\n| {2,}/)

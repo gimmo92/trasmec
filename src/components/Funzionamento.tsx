@@ -215,6 +215,12 @@ export default function Funzionamento() {
         <ul>
           <li>Il file grafico è il template SP OFFER: colori, bordi, colonne e loghi.</li>
           <li>Project riporta codice macchina e POS. del COC.</li>
+          <li>
+            La prima Description è il tipo macchina della distinta, la cella
+            accanto all&apos;etichetta «tipo macchina» (anche in altre lingue).
+            Se la riga della commessa nel COC ha la lunghezza, si aggiunge:
+            per esempio TKK40 BRZ STD-C – L=22000.
+          </li>
           <li>L&apos;ultima riga di ogni commessa ha il bordo inferiore rosso.</li>
           <li>Il totale in alto è la somma della colonna importo, calcolata sulla scorta.</li>
         </ul>

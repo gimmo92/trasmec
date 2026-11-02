@@ -908,7 +908,10 @@ export async function buildSparePartsOffer(
       jobNr: parsed.header.jobNr,
       layoutPosition: item.position || parsed.header.layoutPosition,
       machineType:
-        parsed.header.sizeType || parsed.header.machineCode || undefined,
+        parsed.header.plateType ||
+        parsed.header.sizeType ||
+        parsed.header.machineCode ||
+        undefined,
       description: item.description || parsed.header.description,
       atexConfig:
         parsed.header.atexConfig && /^[A-Za-z]/.test(parsed.header.atexConfig)

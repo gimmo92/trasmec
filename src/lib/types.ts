@@ -7,6 +7,8 @@ export interface BomHeader {
   machineCode?: string; // es. C010270 / TKK40 BRZ STD-C
   conveyorCategory?: string; // es. COC, TKK, TN
   sizeType?: string; // es. CP 700 S
+  /** Nome sulla targa, cella accanto a «tipo macchina» (anche in altre lingue). */
+  plateType?: string;
   description?: string; // descrizione macchina
   customer?: string; // es. SOBONO ENERGY
   finalCustomer?: string;
@@ -139,7 +141,7 @@ export interface MachineSection {
   itemCode: string; // es. BE0806 (dall'ordine)
   jobNr?: string; // es. BE0806C
   layoutPosition?: string; // es. TM F01
-  machineType?: string; // es. CP 700 S / TKK40 BRZ...
+  machineType?: string; // tipo macchina in distinta, es. COC-CP 700 S / TKK40 BRZ STD-C
   description?: string;
   atexConfig?: string;
   bomFile?: string;
