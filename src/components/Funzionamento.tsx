@@ -218,7 +218,7 @@ export default function Funzionamento() {
           <li>
             Nelle distinte xlsm la prima Description è il nome in D4 della
             prima pagina (BOM index), per esempio SR-750x950-MTR. Nelle altre
-            è la cella accanto a «tipo macchina», anche in altre lingue. Se la
+            è la cella accanto a «tipo macchina» o anche solo «Type». Se la
             riga della commessa nel COC ha la lunghezza, si aggiunge.
           </li>
           <li>L&apos;ultima riga di ogni commessa ha il bordo inferiore rosso.</li>

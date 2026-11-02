@@ -501,12 +501,22 @@ const MACHINE_WORD =
   /macchin|machine|maschine|maquin|maszyn|makine|maskin|mashin/;
 const TYPE_WORD = /(?:^|[^a-z])(?:tipo|type|typ|tipi|tip)(?:[^a-z]|$)|typ$/;
 
-/** Etichetta «tipo macchina» in qualunque lingua (Machine type, Maschinentyp, …). */
-function isMachineTypeLabel(v: unknown): boolean {
-  const s = norm(v).normalize("NFD").replace(/\p{M}/gu, "");
+const BARE_TYPE = /^(tipo|type|typ|tipi|tip)$/;
+
+function foldLabel(v: unknown): string {
+  return norm(v).normalize("NFD").replace(/\p{M}/gu, "");
+}
+
+/**
+ * Etichetta «tipo macchina» in qualunque lingua (Machine type, Maschinentyp, …).
+ * Sulla targa a volte c'è solo «TYPE»: vale solo se allowBare è true.
+ */
+function isMachineTypeLabel(v: unknown, allowBare = false): boolean {
+  const s = foldLabel(v);
   if (!s || s.length > 40) return false;
   if (/\b(code|codice|serial|matricol|disegno|drawing|year|anno)\b/.test(s)) return false;
-  return MACHINE_WORD.test(s) && TYPE_WORD.test(s);
+  if (MACHINE_WORD.test(s) && TYPE_WORD.test(s)) return true;
+  return allowBare && BARE_TYPE.test(s);
 }
 
 function plausibleMachineName(v: string): boolean {
@@ -515,7 +525,7 @@ function plausibleMachineName(v: string): boolean {
   if (/^\d{4}$/.test(s)) return false;
   if (/^B[A-Z]\d{4}/i.test(s)) return false;
   if (!/[A-Za-z]/.test(s)) return false;
-  if (isMachineTypeLabel(s)) return false;
+  if (isMachineTypeLabel(s) || BARE_TYPE.test(foldLabel(s))) return false;
   return true;
 }
 
@@ -534,11 +544,12 @@ function findPlateMachineType(grids: Record<string, Grid>): string | undefined {
     .sort((a, b) => plateSheetRank(a.name, a.index) - plateSheetRank(b.name, b.index));
 
   for (const { name } of ranked) {
+    const allowBare = /label|targa|targhetta|data\s*plate|\bplate\b/i.test(name);
     const grid = grids[name] ?? [];
     for (let r = 0; r < grid.length; r++) {
       const row = grid[r] ?? [];
       for (let c = 0; c < row.length; c++) {
-        if (!isMachineTypeLabel(row[c])) continue;
+        if (!isMachineTypeLabel(row[c], allowBare)) continue;
         for (let cc = c + 1; cc < row.length; cc++) {
           if (isEmpty(row[cc])) continue;
           const value = cellStr(row[cc]);
