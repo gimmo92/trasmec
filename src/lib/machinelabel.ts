@@ -1,10 +1,12 @@
 import type { MachineSection } from "./types";
 
-/** SRD, CLP e COC sono la sigla: in descrizione diventano il nome della famiglia. */
+/** Sigle macchina: si sostituiscono solo le lettere, il resto del nome resta. */
 export function expandMachineFamily(label: string): string {
   return label
     .replace(/\bSRD(?![A-Za-z])/gi, "SLIDE")
+    .replace(/\bSR(?![A-Za-z])/gi, "SLIDE")
     .replace(/\bCLP(?![A-Za-z])/gi, "FLAP")
+    .replace(/\bCL(?![A-Za-z])/gi, "FLAP")
     .replace(/\bCOC(?![A-Za-z])/gi, "SCREW");
 }
 
