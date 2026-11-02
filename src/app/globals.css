@@ -268,6 +268,19 @@ a {
   border: 0;
 }
 
+.archivio-subtabs {
+  display: flex;
+  gap: 4px;
+  margin: 18px 0 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.archivio-subtabs .tab {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+
 .order-filters {
   display: flex;
   flex-wrap: wrap;

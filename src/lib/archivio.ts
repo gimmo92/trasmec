@@ -23,7 +23,7 @@ export interface Archivio {
   distinte: ArchivioDistinta[];
   /** Liste motori e sensori, collegate agli ordini come le distinte. */
   liste: ArchivioDistinta[];
-  /** Spare part list, info spare parts e calcolo catena: non si legano a un'offerta. */
+  /** Spare part list, info spare parts e calcolo costo catene: non si legano a un'offerta. */
   generali: DocumentoFile[];
   altri: DocumentoFile[];
 }

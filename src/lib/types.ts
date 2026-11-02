@@ -93,7 +93,7 @@ export const DOC_KIND_LABEL: Record<DocumentoFile["kind"], string> = {
   listino: "listino",
   "spare-part-list": "spare part list",
   "info-spare-parts": "info spare parts",
-  "calcolo-catena": "calcolo catena",
+  "calcolo-catena": "calcolo costo catene",
   template: "template",
   altro: "da verificare",
 };

@@ -22,7 +22,7 @@ interface CacheEntry extends ClassifiedDoc {
 }
 
 /** Va alzato quando cambiano le regole, così i file già visti vengono riclassificati. */
-const CACHE_VERSION = 7;
+const CACHE_VERSION = 8;
 
 const DATA_FILE = path.join(process.cwd(), "data", "classificazione.json");
 const CLOUD_PATH = "config/classificazione.json";
@@ -34,12 +34,14 @@ function orderCodes(text: string): string[] {
   return parseOrderText(text).includedItems.map((item) => item.code);
 }
 
-/** Spare part list, info spare parts, calcolo catena: valgono per tutte le offerte. */
+/** Spare part list, info spare parts, calcolo costo catene: valgono per tutte le offerte. */
 export function generaleKindFromText(
   text: string
 ): "spare-part-list" | "info-spare-parts" | "calcolo-catena" | null {
   const n = text.toLowerCase().replace(/[_-]+/g, " ");
-  if (/\bcalcolo\s*(della\s*)?catena\b|\bchain\s*calc\b/.test(n)) return "calcolo-catena";
+  if (/\bcalcolo\s+(?:(?:del\s+)?cost[oi]\s+|della\s+)?caten[ae]\b|\bchain\s*calc\b/.test(n)) {
+    return "calcolo-catena";
+  }
   if (/\binfo(?:rmazioni)?\s*spare\s*parts?\b/.test(n)) return "info-spare-parts";
   if (/\bspare\s*parts?\s*list\b/.test(n)) return "spare-part-list";
   return null;

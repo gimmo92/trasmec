@@ -33,6 +33,7 @@ export default function Archivio() {
   const [altri, setAltri] = useState<DocumentoFile[]>([]);
   const [cloud, setCloud] = useState(false);
   const [filter, setFilter] = useState("");
+  const [section, setSection] = useState<"offerte" | "generali">("offerte");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -96,9 +97,9 @@ export default function Archivio() {
         <div>
           <h2>Archivio</h2>
           <p className="hint">
-            Carica offerte, distinte e liste motori/sensori. Spare part list, info spare parts
-            e calcolo catena stanno nei file generali e valgono per tutte le offerte. Gli altri
-            file restano collegati alle offerte che citano le loro commesse.
+            {section === "generali"
+              ? "Spare part list, info spare parts e calcolo costo catene valgono per tutte le offerte."
+              : "Carica offerte, distinte e liste motori/sensori. Ogni file resta collegato alle offerte che citano le sue commesse."}
           </p>
         </div>
       </div>
@@ -114,78 +115,103 @@ export default function Archivio() {
         }}
       />
 
-      <div className="order-filters" role="group" aria-label="Filtra per offerta">
-        <button type="button" className={filter ? "" : "on"} onClick={() => setFilter("")}>
-          Tutte le offerte
+      <div className="archivio-subtabs" role="tablist" aria-label="Sezioni archivio">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={section === "offerte"}
+          className={section === "offerte" ? "tab on" : "tab"}
+          onClick={() => setSection("offerte")}
+        >
+          Offerte
         </button>
-        {ordini.map((order) => (
-          <button
-            key={order.name}
-            type="button"
-            className={filter === order.name ? "on" : ""}
-            onClick={() => setFilter(order.name)}
-          >
-            {orderTitle(order)}
-          </button>
-        ))}
+        <button
+          type="button"
+          role="tab"
+          aria-selected={section === "generali"}
+          className={section === "generali" ? "tab on" : "tab"}
+          onClick={() => setSection("generali")}
+        >
+          File generali
+        </button>
       </div>
-
-      <FileGenerali files={generali} />
 
       {error && <div className="login-error">{error}</div>}
       {loading && <div className="status">Caricamento…</div>}
 
-      {!loading && ordini.length === 0 && (
-        <p className="hint">Nessuna offerta. Carica il PDF dell&apos;offerta per raggruppare le distinte.</p>
-      )}
-
-      {visibleOrders.map((order) => {
-        const rows = distinteDi(order.name);
-        return (
-          <section key={order.name} className="order-group">
-            <h3>{orderTitle(order)}</h3>
-            {orderCodesLabel(order) && <p className="hint">{orderCodesLabel(order)}</p>}
-            {rows.length === 0 && <p className="hint">Nessun file associato a questa offerta.</p>}
-            {rows.map((file) => (
-              <DistintaCard
-                key={`${order.name}:${file.name}`}
-                file={file}
-                ordini={ordini}
-                onToggle={(orderName) => toggleOrder(file, orderName)}
-              />
+      {section === "generali" ? (
+        <FileGenerali files={generali} />
+      ) : (
+        <>
+          <div className="order-filters" role="group" aria-label="Filtra per offerta">
+            <button type="button" className={filter ? "" : "on"} onClick={() => setFilter("")}>
+              Tutte le offerte
+            </button>
+            {ordini.map((order) => (
+              <button
+                key={order.name}
+                type="button"
+                className={filter === order.name ? "on" : ""}
+                onClick={() => setFilter(order.name)}
+              >
+                {orderTitle(order)}
+              </button>
             ))}
-          </section>
-        );
-      })}
+          </div>
 
-      {loose.length > 0 && (
-        <section className="order-group">
-          <h3>Senza offerta</h3>
-          <p className="hint">Associane almeno uno con le caselle qui sotto.</p>
-          {loose.map((file) => (
-            <DistintaCard
-              key={file.name}
-              file={file}
-              ordini={ordini}
-              onToggle={(orderName) => toggleOrder(file, orderName)}
-            />
-          ))}
-        </section>
-      )}
+          {!loading && ordini.length === 0 && (
+            <p className="hint">Nessuna offerta. Carica il PDF dell&apos;offerta per raggruppare le distinte.</p>
+          )}
 
-      {altri.length > 0 && !filter && (
-        <section className="order-group">
-          <h3>Altri documenti</h3>
-          {altri.map((file) => (
-            <div key={file.name} className="distinta-card static">
-              <div>
-                <div className="name">{file.name}</div>
-                <div className="sub">{formatSize(file.sizeBytes)}</div>
-              </div>
-              <span className={`badge ${file.kind}`}>{DOC_KIND_LABEL[file.kind]}</span>
-            </div>
-          ))}
-        </section>
+          {visibleOrders.map((order) => {
+            const rows = distinteDi(order.name);
+            return (
+              <section key={order.name} className="order-group">
+                <h3>{orderTitle(order)}</h3>
+                {orderCodesLabel(order) && <p className="hint">{orderCodesLabel(order)}</p>}
+                {rows.length === 0 && <p className="hint">Nessun file associato a questa offerta.</p>}
+                {rows.map((file) => (
+                  <DistintaCard
+                    key={`${order.name}:${file.name}`}
+                    file={file}
+                    ordini={ordini}
+                    onToggle={(orderName) => toggleOrder(file, orderName)}
+                  />
+                ))}
+              </section>
+            );
+          })}
+
+          {loose.length > 0 && (
+            <section className="order-group">
+              <h3>Senza offerta</h3>
+              <p className="hint">Associane almeno uno con le caselle qui sotto.</p>
+              {loose.map((file) => (
+                <DistintaCard
+                  key={file.name}
+                  file={file}
+                  ordini={ordini}
+                  onToggle={(orderName) => toggleOrder(file, orderName)}
+                />
+              ))}
+            </section>
+          )}
+
+          {altri.length > 0 && !filter && (
+            <section className="order-group">
+              <h3>Altri documenti</h3>
+              {altri.map((file) => (
+                <div key={file.name} className="distinta-card static">
+                  <div>
+                    <div className="name">{file.name}</div>
+                    <div className="sub">{formatSize(file.sizeBytes)}</div>
+                  </div>
+                  <span className={`badge ${file.kind}`}>{DOC_KIND_LABEL[file.kind]}</span>
+                </div>
+              ))}
+            </section>
+          )}
+        </>
       )}
     </div>
   );
@@ -194,8 +220,6 @@ export default function Archivio() {
 function FileGenerali({ files }: { files: DocumentoFile[] }) {
   return (
     <section className="order-group">
-      <h3>File generali</h3>
-      <p className="hint">Valgono per tutte le offerte e non si collegano a una commessa.</p>
       {FILE_GENERALI.map((kind) => {
         const rows = files.filter((file) => file.kind === kind);
         if (!rows.length) {

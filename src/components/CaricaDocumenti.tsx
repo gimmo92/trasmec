@@ -98,7 +98,7 @@ export default function CaricaDocumenti({
         {busy ? "Classificazione…" : "Trascina qui i file, oppure sceglili"}
         <span>
           Offerte PDF, distinte Excel, liste ML/SL, disegni e i file generali: spare part list,
-          info spare parts, calcolo catena.
+          info spare parts, calcolo costo catene.
         </span>
       </button>
       <input
