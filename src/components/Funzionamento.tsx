@@ -219,7 +219,8 @@ export default function Funzionamento() {
             Nelle distinte xlsm la prima Description è il nome in D4 della
             prima pagina (BOM index), per esempio SR-750x950-MTR. Nelle altre
             è la cella accanto a «tipo macchina» o anche solo «Type». Se la
-            riga della commessa nel COC ha la lunghezza, si aggiunge.
+            riga della commessa nel COC ha la lunghezza, si aggiunge. SRD
+            diventa SLIDE, CLP diventa FLAP, COC diventa SCREW.
           </li>
           <li>L&apos;ultima riga di ogni commessa ha il bordo inferiore rosso.</li>
           <li>Il totale in alto è la somma della colonna importo, calcolata sulla scorta.</li>

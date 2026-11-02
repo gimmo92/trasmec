@@ -1,5 +1,13 @@
 import type { MachineSection } from "./types";
 
+/** SRD, CLP e COC sono la sigla: in descrizione diventano il nome della famiglia. */
+export function expandMachineFamily(label: string): string {
+  return label
+    .replace(/\bSRD(?![A-Za-z])/gi, "SLIDE")
+    .replace(/\bCLP(?![A-Za-z])/gi, "FLAP")
+    .replace(/\bCOC(?![A-Za-z])/gi, "SCREW");
+}
+
 /** Lunghezza sulla riga commessa del COC: "L=18800" o "L=6150+6150". */
 function cocLength(description?: string): string | undefined {
   const m = (description || "").match(/L\s*=\s*(\d+(?:\s*\+\s*\d+)*)/i);
@@ -11,6 +19,12 @@ function cocLength(description?: string): string | undefined {
  * la lunghezza della riga commessa nel COC. Esempio "TKK40 BRZ STD-C – L=22000".
  */
 export function machineLabel(
+  m: Pick<MachineSection, "description" | "machineType" | "jobNr">
+): string {
+  return expandMachineFamily(machineLabelRaw(m));
+}
+
+function machineLabelRaw(
   m: Pick<MachineSection, "description" | "machineType" | "jobNr">
 ): string {
   const type = (m.machineType || "").trim();

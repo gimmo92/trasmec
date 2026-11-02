@@ -8,6 +8,35 @@ export interface WearLifetime {
   hours: number;
 }
 
+/** Durate del file Info-Dettagli x SPARE PARTS, usate se in archivio non c'è il foglio. */
+const DEFAULT_WEAR_LIFETIMES: WearLifetime[] = [
+  { en: "Support TM", it: "Supporto TM", hours: 87600 },
+  { en: "Support SN", it: "Supporto SN", hours: 87600 },
+  { en: "Bearing", it: "Cuscinetto", hours: 43800 },
+  { en: "Sleeve", it: "Bussola", hours: 87600 },
+  { en: "Thrust bearing", it: "RALLA", hours: 43800 },
+  { en: "Clamping ring", it: "Guarnizione", hours: 26280 },
+  { en: "Support Altri", it: "Supporto Altri", hours: 87600 },
+  { en: "Kit settori", it: "Kit settori", hours: 87600 },
+  { en: "Pinion", it: "Pignone", hours: 17520 },
+  { en: "Crown", it: "Corona", hours: 17520 },
+  { en: "Transmission chain", it: "Catena di trasmissione", hours: 17520 },
+  { en: "Transmission coupling", it: "Giunto di trasmissione", hours: 43800 },
+  { en: "Scraper", it: "Pala", hours: 43800 },
+  { en: "Transport chain", it: "Catena di trasporto", hours: 26280 },
+  { en: "Belt L=XXXXX", it: "Tappeto L=XXXXX", hours: 87600 },
+  { en: "Gearmotor", it: "Motoriduttore", hours: 87600 },
+  { en: "Sensor (tranne i Vega / Vib)", it: "Sensore (tranne i Vega / Vib)", hours: 87600 },
+  { en: "Sensor Vega /Vib", it: "Sensore Vega / Vib", hours: 87600 },
+  { en: "Sprinkler", it: "Spruzzatori", hours: 43800 },
+  { en: "Explosion proof door", it: "Portelle anti esplosione", hours: 87600 },
+];
+
+/** Il file in archivio vince; altrimenti restano le durate già lette da quel foglio. */
+export function wearLifetimeTable(fromFile: WearLifetime[]): WearLifetime[] {
+  return fromFile.length ? fromFile : DEFAULT_WEAR_LIFETIMES;
+}
+
 /** Legge le durate dal foglio info spare parts (colonna estimated lifetime). */
 export function readWearLifetimes(filePath: string): WearLifetime[] {
   const wb = XLSX.readFile(filePath, { cellDates: true, cellFormula: false });

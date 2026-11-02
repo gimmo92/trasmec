@@ -4,7 +4,8 @@ import ExcelJS from "exceljs";
 import type { MachineSection, Offer, ProposalLine } from "@/lib/types";
 import { COMPOUND_FILLS, SUPPORT_FILLS, compoundFillIndex, isNonSeSensorLine, supportFillIndex } from "@/lib/highlight";
 import { listDocumentiClassificati, resolveDocumento } from "@/lib/documenti";
-import { readWearLifetimes, wearLifetimeHours, type WearLifetime } from "@/lib/lifetime";
+import { readWearLifetimes, wearLifetimeHours, wearLifetimeTable, type WearLifetime } from "@/lib/lifetime";
+import { prepareApp } from "@/lib/prepare";
 import { classifyComponent } from "@/lib/spareclass";
 import { machineLabel, offerUnit, projectLabel } from "@/lib/machinelabel";
 
@@ -54,6 +55,7 @@ function paintBlock(row: ExcelJS.Row, from: number, to: number, argb: string) {
 
 async function loadWearLifetimes(): Promise<WearLifetime[]> {
   try {
+    await prepareApp();
     const docs = await listDocumentiClassificati();
     const infos = docs
       .filter((doc) => doc.kind === "info-spare-parts")
@@ -75,7 +77,7 @@ async function buildOfferWorkbook(offer: Offer): Promise<ExcelJS.Buffer> {
   if (foglio) wb.removeWorksheet(foglio.id);
   const ws = wb.getWorksheet("SP OFFER");
   if (!ws) throw new Error("Il template non contiene il foglio SP OFFER");
-  const lifetimes = await loadWearLifetimes();
+  const lifetimes = wearLifetimeTable(await loadWearLifetimes());
 
   const lifetimeHeader = ws.getCell(11, LIFETIME_COL);
   const headerSample = ws.getCell(11, 25);
