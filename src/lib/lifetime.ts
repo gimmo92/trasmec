@@ -33,7 +33,8 @@ export function readWearLifetimes(filePath: string): WearLifetime[] {
 
   const out: WearLifetime[] = [];
   for (const row of rows) {
-    const hours = typeof row?.[hoursCol] === "number" ? row[hoursCol] : Number(row?.[hoursCol]);
+    const raw = row?.[hoursCol];
+    const hours = typeof raw === "number" ? raw : Number(raw);
     if (!Number.isFinite(hours) || hours <= 0) continue;
     const texts: string[] = [];
     for (let c = 0; c < hoursCol; c++) {
