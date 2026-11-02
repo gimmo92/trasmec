@@ -1,0 +1,11 @@
+---
+description: Dopo ogni modifica fai commit e push su origin/main
+alwaysApply: true
+---
+
+Dopo ogni modifica in questo progetto fai commit e push su origin/main, senza aspettare che te lo chiedano di nuovo.
+
+- Commit solo i file della modifica appena fatta.
+- Non includere segreti, file di dati locali o modifiche non correlate già presenti nel working tree.
+- Non usare push --force.
+- Il messaggio spiega perché, in una frase.
