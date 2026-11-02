@@ -223,6 +223,11 @@ export default function Funzionamento() {
           </li>
           <li>L&apos;ultima riga di ogni commessa ha il bordo inferiore rosso.</li>
           <li>Il totale in alto è la somma della colonna importo, calcolata sulla scorta.</li>
+          <li>
+            Nel margine verde, tutta a destra, c&apos;è WEAR PARTS ESTIMATED
+            LIFETIME (HRS). Le ore arrivano dal file info dettagli spare parts,
+            in base alla categoria del componente.
+          </li>
         </ul>
       </section>
     </div>

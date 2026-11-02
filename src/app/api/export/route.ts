@@ -3,6 +3,8 @@ import path from "node:path";
 import ExcelJS from "exceljs";
 import type { MachineSection, Offer, ProposalLine } from "@/lib/types";
 import { COMPOUND_FILLS, SUPPORT_FILLS, compoundFillIndex, isNonSeSensorLine, supportFillIndex } from "@/lib/highlight";
+import { listDocumentiClassificati, resolveDocumento } from "@/lib/documenti";
+import { readWearLifetimes, wearLifetimeHours, type WearLifetime } from "@/lib/lifetime";
 import { classifyComponent } from "@/lib/spareclass";
 import { machineLabel, offerUnit, projectLabel } from "@/lib/machinelabel";
 
@@ -11,6 +13,9 @@ export const runtime = "nodejs";
 const TEMPLATE = path.join(process.cwd(), "templates", "offerta.xlsx");
 
 const SENSOR_YELLOW = "FFFFFF00";
+/** Ultima colonna del margine verde, a destra di WEAR PART. */
+const LIFETIME_COL = 29;
+const LIFETIME_HEADER = "WEAR PARTS ESTIMATED LIFETIME (HRS)";
 
 const solid = (argb: string): ExcelJS.Fill => ({
   type: "pattern",
@@ -47,6 +52,22 @@ function paintBlock(row: ExcelJS.Row, from: number, to: number, argb: string) {
   for (let col = from; col <= to; col++) row.getCell(col).fill = fill;
 }
 
+async function loadWearLifetimes(): Promise<WearLifetime[]> {
+  try {
+    const docs = await listDocumentiClassificati();
+    const infos = docs
+      .filter((doc) => doc.kind === "info-spare-parts")
+      .sort((a, b) => Number(/dettagli/i.test(b.name)) - Number(/dettagli/i.test(a.name)));
+    for (const doc of infos) {
+      const rows = readWearLifetimes(resolveDocumento(doc.path));
+      if (rows.length) return rows;
+    }
+  } catch {
+    return [];
+  }
+  return [];
+}
+
 async function buildOfferWorkbook(offer: Offer): Promise<ExcelJS.Buffer> {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.readFile(TEMPLATE);
@@ -54,6 +75,14 @@ async function buildOfferWorkbook(offer: Offer): Promise<ExcelJS.Buffer> {
   if (foglio) wb.removeWorksheet(foglio.id);
   const ws = wb.getWorksheet("SP OFFER");
   if (!ws) throw new Error("Il template non contiene il foglio SP OFFER");
+  const lifetimes = await loadWearLifetimes();
+
+  const lifetimeHeader = ws.getCell(11, LIFETIME_COL);
+  const headerSample = ws.getCell(11, 25);
+  lifetimeHeader.value = LIFETIME_HEADER;
+  lifetimeHeader.font = { ...(headerSample.font ?? {}), bold: true };
+  lifetimeHeader.alignment = { wrapText: true, horizontal: "center", vertical: "middle" };
+  ws.getColumn(LIFETIME_COL).width = 18;
 
   // La colonna Project del template è stretta; con la POS del COC serve più spazio.
   ws.getColumn("G").width = 24;
@@ -99,6 +128,12 @@ async function buildOfferWorkbook(offer: Offer): Promise<ExcelJS.Buffer> {
     if (info.deliveryDays != null) row.getCell(23).value = info.deliveryDays;
     if (info.priority) row.getCell(24).value = info.priority;
     if (info.kind) row.getCell(25).value = info.kind;
+    const hours = wearLifetimeHours(l, lifetimes);
+    if (hours != null) {
+      const life = row.getCell(LIFETIME_COL);
+      life.value = hours;
+      life.alignment = { horizontal: "center", vertical: "middle" };
+    }
 
     const hue = compoundFillIndex(l.compoundHue);
     const supportHue = l.highlightGroup === "cuscinetti" ? supportFillIndex(l.compoundHue) : undefined;

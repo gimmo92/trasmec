@@ -22,7 +22,7 @@ interface CacheEntry extends ClassifiedDoc {
 }
 
 /** Va alzato quando cambiano le regole, così i file già visti vengono riclassificati. */
-const CACHE_VERSION = 8;
+const CACHE_VERSION = 9;
 
 const DATA_FILE = path.join(process.cwd(), "data", "classificazione.json");
 const CLOUD_PATH = "config/classificazione.json";
@@ -42,7 +42,9 @@ export function generaleKindFromText(
   if (/\bcalcolo\s+(?:(?:del\s+)?cost[oi]\s+|della\s+)?caten[ae]\b|\bchain\s*calc\b/.test(n)) {
     return "calcolo-catena";
   }
-  if (/\binfo(?:rmazioni)?\s*spare\s*parts?\b/.test(n)) return "info-spare-parts";
+  if (/\binfo(?:rmazioni)?(?:\s+[a-zàèéìòù]+){0,4}\s+spare\s*parts?\b/.test(n)) {
+    return "info-spare-parts";
+  }
   if (/\bspare\s*parts?\s*list\b/.test(n)) return "spare-part-list";
   return null;
 }
