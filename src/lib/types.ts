@@ -73,6 +73,9 @@ export interface DocumentoFile {
     | "lista-motori"
     | "lista-sensori"
     | "listino"
+    | "spare-part-list"
+    | "info-spare-parts"
+    | "calcolo-catena"
     | "template"
     | "altro";
   /** Codice commessa BE####, se riconosciuto dentro il file. */
@@ -88,9 +91,19 @@ export const DOC_KIND_LABEL: Record<DocumentoFile["kind"], string> = {
   "lista-motori": "lista motori",
   "lista-sensori": "lista sensori",
   listino: "listino",
+  "spare-part-list": "spare part list",
+  "info-spare-parts": "info spare parts",
+  "calcolo-catena": "calcolo catena",
   template: "template",
   altro: "da verificare",
 };
+
+/** File di riferimento, validi per tutte le offerte. */
+export const FILE_GENERALI: DocumentoFile["kind"][] = [
+  "spare-part-list",
+  "info-spare-parts",
+  "calcolo-catena",
+];
 
 /** Categoria di una riga di proposta ricambi. */
 export type LineCategory = "spare" | "motor" | "sensor";

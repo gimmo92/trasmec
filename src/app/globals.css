@@ -312,6 +312,10 @@ a {
   font-size: 12px;
 }
 
+.distinta-card.missing {
+  opacity: 0.72;
+}
+
 .link-orders {
   display: flex;
   flex-wrap: wrap;
@@ -378,7 +382,10 @@ a {
   color: #ffd08a;
   border-color: #6a5220;
 }
-.badge.listino {
+.badge.listino,
+.badge.spare-part-list,
+.badge.info-spare-parts,
+.badge.calcolo-catena {
   color: #a0f0c0;
   border-color: #2a6a45;
 }

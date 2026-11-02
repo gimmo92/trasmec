@@ -22,7 +22,7 @@ interface CacheEntry extends ClassifiedDoc {
 }
 
 /** Va alzato quando cambiano le regole, così i file già visti vengono riclassificati. */
-const CACHE_VERSION = 6;
+const CACHE_VERSION = 7;
 
 const DATA_FILE = path.join(process.cwd(), "data", "classificazione.json");
 const CLOUD_PATH = "config/classificazione.json";
@@ -32,6 +32,17 @@ let memory: Record<string, CacheEntry> | null = null;
 /** Codici macchina dell'ordine: gli item dopo AFTER SALES. */
 function orderCodes(text: string): string[] {
   return parseOrderText(text).includedItems.map((item) => item.code);
+}
+
+/** Spare part list, info spare parts, calcolo catena: valgono per tutte le offerte. */
+export function generaleKindFromText(
+  text: string
+): "spare-part-list" | "info-spare-parts" | "calcolo-catena" | null {
+  const n = text.toLowerCase().replace(/[_-]+/g, " ");
+  if (/\bcalcolo\s*(della\s*)?catena\b|\bchain\s*calc\b/.test(n)) return "calcolo-catena";
+  if (/\binfo(?:rmazioni)?\s*spare\s*parts?\b/.test(n)) return "info-spare-parts";
+  if (/\bspare\s*parts?\s*list\b/.test(n)) return "spare-part-list";
+  return null;
 }
 
 /** Motor list / sensor list anche quando il file è un PDF (`…-ML.pdf`). */
@@ -48,6 +59,8 @@ export function kindFromName(name: string): ClassifiedDoc {
   const code = jobCode(name);
   const listed = listKindFromName(name);
   if (listed) return { kind: listed };
+  const generale = generaleKindFromText(name);
+  if (generale) return { kind: generale };
   if (n.endsWith(".dwg")) return { kind: "disegno", code };
   if (n.endsWith(".pdf")) return code ? { kind: "disegno", code } : { kind: "altro" };
   if (n.includes("motor")) return { kind: "lista-motori" };
@@ -88,6 +101,8 @@ function classifyExcel(filePath: string, name: string): ClassifiedDoc {
   const names = sheetNames(filePath);
   const lower = names.map((sheet) => sheet.toLowerCase().trim());
   const codeInName = jobCode(name);
+  const namedGenerale = generaleKindFromText(name);
+  if (namedGenerale) return { kind: namedGenerale };
 
   const distintaSheet = names.find((sheet) =>
     /^(parts only|structured|bom index|distinta|distinta en)$/i.test(sheet.trim())
@@ -101,6 +116,9 @@ function classifyExcel(filePath: string, name: string): ClassifiedDoc {
 
   if (lower.includes("ml")) return { kind: "lista-motori", code: codeInName };
   if (lower.includes("sl")) return { kind: "lista-sensori", code: codeInName };
+
+  const fromSheets = generaleKindFromText(names.join("\n"));
+  if (fromSheets) return { kind: fromSheets };
 
   const sampleSheet =
     names.find((sheet) => sheet.trim() === "1") ??
@@ -131,6 +149,8 @@ function classifyExcel(filePath: string, name: string): ClassifiedDoc {
 async function classifyPdf(filePath: string, name: string): Promise<ClassifiedDoc> {
   const namedList = listKindFromName(name);
   if (namedList) return { kind: namedList };
+  const namedGenerale = generaleKindFromText(name);
+  if (namedGenerale) return { kind: namedGenerale };
   const text = (await extractPdfText(filePath)).slice(0, 40000);
   const codes = orderCodes(text);
   if (/AFTER\s*SALES/i.test(text) || /NR\.\s*DOCUMENTO/i.test(text)) {
@@ -147,6 +167,8 @@ async function classifyPdf(filePath: string, name: string): Promise<ClassifiedDo
   if (codes.length && /COMMESSA|ORDINE|ORDER\s+CONFIRMATION/i.test(text)) {
     return { kind: "ordine", code: codes[0], codes };
   }
+  const fromTitle = generaleKindFromText(text.slice(0, 500));
+  if (fromTitle) return { kind: fromTitle };
   if (/offerta\s+commerciale/i.test(text) || /template/i.test(name)) return { kind: "template" };
   return { kind: "altro" };
 }

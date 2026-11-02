@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { DOC_KIND_LABEL, type DocumentoFile, type MachineSection, type Offer, type ProposalLine } from "@/lib/types";
+import { DOC_KIND_LABEL, FILE_GENERALI, type DocumentoFile, type MachineSection, type Offer, type ProposalLine } from "@/lib/types";
 import { compoundFillIndex, isNonSeSensorLine, supportFillIndex } from "@/lib/highlight";
 import { machineLabel, offerUnit, projectLabel } from "@/lib/machinelabel";
 import { classifyComponent } from "@/lib/spareclass";
@@ -175,6 +175,7 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
   const [docs, setDocs] = useState<DocumentoFile[]>([]);
   const [distinteAll, setDistinteAll] = useState<ArchivioDistinta[]>([]);
   const [listeAll, setListeAll] = useState<ArchivioDistinta[]>([]);
+  const [generali, setGenerali] = useState<DocumentoFile[]>([]);
   const [orderPath, setOrderPath] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loadingDocs, setLoadingDocs] = useState(true);
@@ -193,6 +194,7 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
     setDocs([...orders, ...rest]);
     setDistinteAll(boms);
     setListeAll((data.liste ?? []) as ArchivioDistinta[]);
+    setGenerali((data.generali ?? []) as DocumentoFile[]);
     setOrderPath((current) => (orders.some((order) => order.path === current) ? current : ""));
   }, []);
 
@@ -223,7 +225,7 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
     ? (offer.meta.warnings as unknown[]).map(String)
     : [];
   const altri = useMemo(
-    () => docs.filter((d) => d.kind !== "ordine" && d.kind !== "distinta"),
+    () => docs.filter((d) => d.kind !== "ordine" && d.kind !== "distinta" && !FILE_GENERALI.includes(d.kind)),
     [docs]
   );
 
@@ -375,6 +377,21 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
                 <div className="hint">Nessuna lista motori o sensori associata a questa offerta.</div>
               )}
               {liste.map((d) => (
+                <div key={d.path} className="doc static">
+                  <div className="meta">
+                    <div className="name">{d.name}</div>
+                    <div className="sub">{formatSize(d.sizeBytes)}</div>
+                  </div>
+                  <span className={`badge ${d.kind}`}>{DOC_KIND_LABEL[d.kind]}</span>
+                </div>
+              ))}
+            </>
+          )}
+
+          {generali.length > 0 && (
+            <>
+              <div className="section-title">File generali ({generali.length})</div>
+              {generali.map((d) => (
                 <div key={d.path} className="doc static">
                   <div className="meta">
                     <div className="name">{d.name}</div>

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getJson, putJson, useCloud } from "./cloud";
 import { listDocumentiClassificati } from "./documenti";
-import type { DocumentoFile } from "./types";
+import { FILE_GENERALI, type DocumentoFile } from "./types";
 
 const DATA_FILE = path.join(process.cwd(), "data", "archivio.json");
 const CLOUD_PATH = "config/archivio.json";
@@ -23,6 +23,8 @@ export interface Archivio {
   distinte: ArchivioDistinta[];
   /** Liste motori e sensori, collegate agli ordini come le distinte. */
   liste: ArchivioDistinta[];
+  /** Spare part list, info spare parts e calcolo catena: non si legano a un'offerta. */
+  generali: DocumentoFile[];
   altri: DocumentoFile[];
 }
 
@@ -30,6 +32,10 @@ const LISTE: DocumentoFile["kind"][] = ["lista-motori", "lista-sensori"];
 
 function isCollegabile(file: DocumentoFile): boolean {
   return file.kind === "distinta" || LISTE.includes(file.kind);
+}
+
+function isGenerale(file: DocumentoFile): boolean {
+  return FILE_GENERALI.includes(file.kind);
 }
 
 let memory: Record<string, SavedLink> | null = null;
@@ -112,8 +118,11 @@ export async function readArchivio(): Promise<Archivio> {
   };
   const distinte = files.filter((file) => file.kind === "distinta").map(collega);
   const liste = files.filter((file) => LISTE.includes(file.kind)).map(collega);
-  const altri = files.filter((file) => file.kind !== "ordine" && !isCollegabile(file));
-  return { ordini, distinte, liste, altri };
+  const generali = files
+    .filter(isGenerale)
+    .sort((a, b) => FILE_GENERALI.indexOf(a.kind) - FILE_GENERALI.indexOf(b.kind) || a.name.localeCompare(b.name));
+  const altri = files.filter((file) => file.kind !== "ordine" && !isCollegabile(file) && !isGenerale(file));
+  return { ordini, distinte, liste, generali, altri };
 }
 
 /** Associa una distinta o una lista a uno o più ordini. La scelta resta anche se arrivano altri file. */

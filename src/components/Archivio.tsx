@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import CaricaDocumenti from "@/components/CaricaDocumenti";
-import { DOC_KIND_LABEL, type DocumentoFile } from "@/lib/types";
+import { DOC_KIND_LABEL, FILE_GENERALI, type DocumentoFile } from "@/lib/types";
 
 interface ArchivioDistinta extends DocumentoFile {
   ordini: string[];
@@ -29,6 +29,7 @@ function orderCodesLabel(order: DocumentoFile): string {
 export default function Archivio() {
   const [ordini, setOrdini] = useState<DocumentoFile[]>([]);
   const [distinte, setDistinte] = useState<ArchivioDistinta[]>([]);
+  const [generali, setGenerali] = useState<DocumentoFile[]>([]);
   const [altri, setAltri] = useState<DocumentoFile[]>([]);
   const [cloud, setCloud] = useState(false);
   const [filter, setFilter] = useState("");
@@ -41,6 +42,7 @@ export default function Archivio() {
     if (!res.ok) throw new Error(String(data.error || "Errore archivio"));
     setOrdini(data.ordini ?? []);
     setDistinte([...(data.distinte ?? []), ...(data.liste ?? [])]);
+    setGenerali(data.generali ?? []);
     setAltri(data.altri ?? []);
     setCloud(Boolean(data.supabase));
   }, []);
@@ -94,8 +96,9 @@ export default function Archivio() {
         <div>
           <h2>Archivio</h2>
           <p className="hint">
-            Carica offerte, distinte e liste motori/sensori. Ogni file resta collegato alle offerte
-            che citano le sue commesse, e puoi cambiare il collegamento con le caselle.
+            Carica offerte, distinte e liste motori/sensori. Spare part list, info spare parts
+            e calcolo catena stanno nei file generali e valgono per tutte le offerte. Gli altri
+            file restano collegati alle offerte che citano le loro commesse.
           </p>
         </div>
       </div>
@@ -126,6 +129,8 @@ export default function Archivio() {
           </button>
         ))}
       </div>
+
+      <FileGenerali files={generali} />
 
       {error && <div className="login-error">{error}</div>}
       {loading && <div className="status">Caricamento…</div>}
@@ -183,6 +188,40 @@ export default function Archivio() {
         </section>
       )}
     </div>
+  );
+}
+
+function FileGenerali({ files }: { files: DocumentoFile[] }) {
+  return (
+    <section className="order-group">
+      <h3>File generali</h3>
+      <p className="hint">Valgono per tutte le offerte e non si collegano a una commessa.</p>
+      {FILE_GENERALI.map((kind) => {
+        const rows = files.filter((file) => file.kind === kind);
+        if (!rows.length) {
+          return (
+            <div key={kind} className="distinta-card static missing">
+              <div>
+                <div className="name">{DOC_KIND_LABEL[kind]}</div>
+                <div className="sub">Non caricato</div>
+              </div>
+              <span className={`badge ${kind}`}>{DOC_KIND_LABEL[kind]}</span>
+            </div>
+          );
+        }
+        return rows.map((file) => (
+          <div key={file.name} className="distinta-card static">
+            <div>
+              <div className="name">{file.name}</div>
+              <div className="sub">
+                {DOC_KIND_LABEL[kind]} · {formatSize(file.sizeBytes)}
+              </div>
+            </div>
+            <span className={`badge ${file.kind}`}>{DOC_KIND_LABEL[file.kind]}</span>
+          </div>
+        ));
+      })}
+    </section>
   );
 }
 

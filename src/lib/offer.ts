@@ -692,6 +692,7 @@ export async function buildSparePartsOffer(
   }
   const pdfDoc = docs.find((d) => d.kind === "ordine" && (d.path === opts.orderPath || d.name === opts.orderPath));
   const splDoc =
+    docs.find((d) => d.kind === "spare-part-list") ??
     docs.find((d) => d.kind === "listino" && /spare\s*parts?\s*list/i.test(d.name)) ??
     docs.find((d) => /spare\s*parts?\s*list/i.test(d.name)) ??
     docs.find((d) => d.kind === "listino");
