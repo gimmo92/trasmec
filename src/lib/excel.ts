@@ -4,8 +4,13 @@ import { listSigleCodes } from "./sigle";
 
 export type Grid = (string | number | null)[][];
 
-/** Legge un file Excel e restituisce, per ogni foglio, una griglia 2D di valori. */
-export function readWorkbookGrids(filePath: string): Record<string, Grid> {
+interface WorkbookRead {
+  grids: Record<string, Grid>;
+  /** Distinte xlsm: nome macchina in D4 della prima pagina (foglio BOM Index). */
+  bomIndexD4?: string;
+}
+
+function readWorkbook(filePath: string): WorkbookRead {
   const wb = XLSX.readFile(filePath, { cellDates: true, cellFormula: false });
   const grids: Record<string, Grid> = {};
   for (const name of wb.SheetNames) {
@@ -19,7 +24,14 @@ export function readWorkbookGrids(filePath: string): Record<string, Grid> {
     });
     grids[name] = rows as Grid;
   }
-  return grids;
+  const indexName = wb.SheetNames.find((n) => /^bom\s*index$/i.test(n.trim()));
+  const d4 = indexName ? cellStr(wb.Sheets[indexName]?.["D4"]?.v) : "";
+  return { grids, bomIndexD4: plausibleMachineName(d4) ? d4 : undefined };
+}
+
+/** Legge un file Excel e restituisce, per ogni foglio, una griglia 2D di valori. */
+export function readWorkbookGrids(filePath: string): Record<string, Grid> {
+  return readWorkbook(filePath).grids;
 }
 
 /** Normalizza un testo cella per confronti (minuscolo, senza ":" finale, spazi compressi). */
@@ -487,7 +499,7 @@ export function extractSpareParts(grids: Record<string, Grid>): {
 
 const MACHINE_WORD =
   /macchin|machine|maschine|maquin|maszyn|makine|maskin|mashin/;
-const TYPE_WORD = /(?:^|[^a-z])(?:tipo|type|typ)(?:[^a-z]|$)|typ$/;
+const TYPE_WORD = /(?:^|[^a-z])(?:tipo|type|typ|tipi|tip)(?:[^a-z]|$)|typ$/;
 
 /** Etichetta «tipo macchina» in qualunque lingua (Machine type, Maschinentyp, …). */
 function isMachineTypeLabel(v: unknown): boolean {
@@ -511,8 +523,12 @@ function plausibleMachineName(v: string): boolean {
  * Nome macchina sulla targa: cella a fianco di «tipo macchina».
  * Prima la seconda pagina e i fogli targa/etichetta, poi gli altri.
  */
+function isDictionarySheet(name: string): boolean {
+  return /dizion|dictionary|traduz|translation|glossar/i.test(name);
+}
+
 function findPlateMachineType(grids: Record<string, Grid>): string | undefined {
-  const names = Object.keys(grids);
+  const names = Object.keys(grids).filter((name) => !isDictionarySheet(name));
   const ranked = names
     .map((name, index) => ({ name, index }))
     .sort((a, b) => plateSheetRank(a.name, a.index) - plateSheetRank(b.name, b.index));
@@ -565,7 +581,7 @@ const HEADER_LABELS: Record<keyof BomHeader & string, string[]> = {
 };
 
 /** Estrae l'intestazione (dati generali) provando le due varianti di layout. */
-function extractHeader(grids: Record<string, Grid>): BomHeader {
+function extractHeader(grids: Record<string, Grid>, bomIndexD4?: string): BomHeader {
   // Unisce tutti i fogli candidati per la ricerca label->valore
   const candidateSheets = ["BOM Index", "1", "Structured", "Foglio1"];
   const searchGrids: Grid[] = [];
@@ -593,13 +609,13 @@ function extractHeader(grids: Record<string, Grid>): BomHeader {
   for (const [field, labels] of Object.entries(HEADER_LABELS)) {
     header[field] = find(labels);
   }
-  header.plateType = findPlateMachineType(grids);
+  header.plateType = bomIndexD4 || findPlateMachineType(grids);
   return header;
 }
 
 /** Parsa un file di distinta base in una struttura normalizzata. */
 export function parseBom(filePath: string, relPath: string): ParsedBom {
-  const grids = readWorkbookGrids(filePath);
+  const { grids, bomIndexD4 } = readWorkbook(filePath);
   const sheetNames = Object.keys(grids);
   const sheets: SheetSummary[] = sheetNames.map((name) => {
     const g = grids[name] ?? [];
@@ -631,7 +647,7 @@ export function parseBom(filePath: string, relPath: string): ParsedBom {
     warnings.push("Formato distinta non riconosciuto: nessun foglio 'Structured' o '1'.");
   }
 
-  const header = extractHeader(grids);
+  const header = extractHeader(grids, bomIndexD4);
 
   return {
     file: filePath.split(/[\\/]/).pop() ?? filePath,
@@ -655,8 +671,8 @@ export function parseBomForOffer(
   bom: BomRow[];
   warnings: string[];
 } {
-  const grids = readWorkbookGrids(filePath);
-  const header = extractHeader(grids);
+  const { grids, bomIndexD4 } = readWorkbook(filePath);
+  const header = extractHeader(grids, bomIndexD4);
   const format: ParsedBom["format"] = grids["Structured"]
     ? "structured"
     : grids["1"]
