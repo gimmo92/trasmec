@@ -150,6 +150,17 @@ export default function Funzionamento() {
             disegno o, se manca, quello nel tipo catena.
           </li>
           <li>
+            Catena TKK: il codice in offerta è il Chain Assembly Code della distinta,
+            per esempio CT2013. La descrizione resta il modello, per esempio Chain
+            14226MN, con un trattino e lo stesso codice.
+          </li>
+          <li>
+            Catena TK: il Chain Assembly Code è il numero disegno della distinta.
+            Nel file calcolo costo catene si prende il codice della stessa riga che
+            inizia con TK. La descrizione è il modello, un trattino e il numero
+            disegno.
+          </li>
+          <li>
             Pale e scraper letti dal disegno prendono la quantità del disegno. Un
             file con TP nel nome è una scheda tappeto e non si usa come disegno
             catena.

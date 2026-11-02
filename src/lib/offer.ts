@@ -17,6 +17,12 @@ import { prepareApp } from "./prepare";
 import { isJobCode, jobCode } from "./jobcode";
 import { readArchivio } from "./archivio";
 import { readDrawings, type DrawingInfo } from "./disegni";
+import {
+  chainAssemblyKind,
+  readChainCostRows,
+  tkCodeForDrawing,
+  type ChainCostRow,
+} from "./chaincost";
 
 export interface BuildOfferOptions {
   /** File dell'ordine da cui generare. Obbligatorio. */
@@ -551,6 +557,77 @@ function isScraperLine(line: ProposalLine): boolean {
   return isScraperItem(line.code, lineBlob(line));
 }
 
+function appendAssembly(description: string, assembly: string): string {
+  const desc = description.replace(/\s+/g, " ").trim();
+  const escaped = assembly.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (new RegExp(`[-–]\\s*${escaped}\\s*$`, "i").test(desc)) return desc;
+  return `${desc} - ${assembly}`;
+}
+
+/** Chain assembly code della riga: disegno TK oppure CT della TKK. */
+function chainAssembly(line: ProposalLine): { kind: "tk" | "tkk"; code: string } | null {
+  const candidates = [line.bomCode, line.code].map((code) => (code ?? "").trim()).filter(Boolean);
+  for (const code of candidates) {
+    if (chainAssemblyKind(code) === "tk") return { kind: "tk", code };
+  }
+  for (const code of candidates) {
+    if (chainAssemblyKind(code) === "tkk") return { kind: "tkk", code: code.toUpperCase() };
+  }
+  return null;
+}
+
+/**
+ * Codice e descrizione della catena di trasporto. La quantità non si tocca.
+ * TKK: codice = chain assembly code (CT2013). TK: codice TK del calcolo costo catene.
+ * Descrizione: modello già calcolato, trattino, chain assembly code.
+ */
+function applyChainCodes(
+  spares: ProposalLine[],
+  rows: ChainCostRow[],
+  warnings: string[],
+  hasCostFile: boolean
+): void {
+  for (const line of spares) {
+    if (!isChainLine(line)) continue;
+    const assembly = chainAssembly(line);
+    if (!assembly) continue;
+    const description = line.descriptionEN || line.descriptionIT || "";
+    if (assembly.kind === "tkk") {
+      line.code = assembly.code;
+      line.bomCode = assembly.code;
+      line.mapped = true;
+      line.descriptionEN = appendAssembly(description, assembly.code);
+      continue;
+    }
+    line.bomCode = assembly.code;
+    const tkCode = tkCodeForDrawing(rows, assembly.code);
+    if (tkCode) {
+      line.code = tkCode;
+      line.mapped = true;
+    } else {
+      line.code = assembly.code;
+      line.mapped = false;
+      warnings.push(
+        hasCostFile
+          ? `Catena TK ${assembly.code}: nel calcolo costo catene non c'è un codice che inizia con TK.`
+          : `Catena TK ${assembly.code}: manca il file calcolo costo catene.`
+      );
+    }
+    line.descriptionEN = appendAssembly(description, assembly.code);
+  }
+}
+
+/** Dopo la riscrittura delle descrizioni, il trattino col chain assembly code resta. */
+function keepChainAssemblySuffix(spares: ProposalLine[]): void {
+  for (const line of spares) {
+    if (!isChainLine(line)) continue;
+    const assembly = chainAssembly(line);
+    if (!assembly) continue;
+    const description = line.descriptionEN || line.descriptionIT || "";
+    line.descriptionEN = appendAssembly(description, assembly.code);
+  }
+}
+
 /** Catena di trasporto della commessa, non il giunto a catena. */
 function isChainLine(line: ProposalLine): boolean {
   if (isScraperLine(line)) return false;
@@ -696,6 +773,15 @@ export async function buildSparePartsOffer(
     docs.find((d) => d.kind === "listino" && /spare\s*parts?\s*list/i.test(d.name)) ??
     docs.find((d) => /spare\s*parts?\s*list/i.test(d.name)) ??
     docs.find((d) => d.kind === "listino");
+  const chainDoc = docs.find((d) => d.kind === "calcolo-catena");
+  let chainRows: ChainCostRow[] = [];
+  if (chainDoc) {
+    try {
+      chainRows = readChainCostRows(resolveDocumento(chainDoc.path));
+    } catch {
+      chainRows = [];
+    }
+  }
 
   if (!pdfDoc) {
     throw new Error("Offerta non trovata. Selezionala di nuovo dall'elenco.");
@@ -815,6 +901,7 @@ export async function buildSparePartsOffer(
       parsed.format !== "config" || doubleChain
     );
     const orderedSpares = placeScrapersUnderChain(spares);
+    applyChainCodes(orderedSpares, chainRows, warnings, Boolean(chainDoc));
 
     const section: MachineSection = {
       itemCode: base,
@@ -860,5 +947,7 @@ export async function buildSparePartsOffer(
     },
   };
 
-  return refineOfferWithClaude(draft, indices);
+  const refined = await refineOfferWithClaude(draft, indices);
+  for (const machine of refined.machines) keepChainAssemblySuffix(machine.spares);
+  return refined;
 }
