@@ -19,6 +19,18 @@ function orderTitle(order: DocumentoFile): string {
   return order.name;
 }
 
+function downloadHref(name: string): string {
+  return `/api/documenti/download?name=${encodeURIComponent(name)}`;
+}
+
+function Scarica({ name }: { name: string }) {
+  return (
+    <a className="scarica" href={downloadHref(name)} download={name}>
+      Scarica
+    </a>
+  );
+}
+
 function orderCodesLabel(order: DocumentoFile): string {
   const codes = order.codes ?? [];
   if (!codes.length) return order.code ?? "";
@@ -167,7 +179,10 @@ export default function Archivio() {
             const rows = distinteDi(order.name);
             return (
               <section key={order.name} className="order-group">
-                <h3>{orderTitle(order)}</h3>
+                <div className="order-title">
+                  <h3>{orderTitle(order)}</h3>
+                  <Scarica name={order.name} />
+                </div>
                 {orderCodesLabel(order) && <p className="hint">{orderCodesLabel(order)}</p>}
                 {rows.length === 0 && <p className="hint">Nessun file associato a questa offerta.</p>}
                 {rows.map((file) => (
@@ -206,7 +221,10 @@ export default function Archivio() {
                     <div className="name">{file.name}</div>
                     <div className="sub">{formatSize(file.sizeBytes)}</div>
                   </div>
-                  <span className={`badge ${file.kind}`}>{DOC_KIND_LABEL[file.kind]}</span>
+                  <div className="file-actions">
+                    <Scarica name={file.name} />
+                    <span className={`badge ${file.kind}`}>{DOC_KIND_LABEL[file.kind]}</span>
+                  </div>
                 </div>
               ))}
             </section>
@@ -241,7 +259,10 @@ function FileGenerali({ files }: { files: DocumentoFile[] }) {
                 {DOC_KIND_LABEL[kind]} · {formatSize(file.sizeBytes)}
               </div>
             </div>
-            <span className={`badge ${file.kind}`}>{DOC_KIND_LABEL[file.kind]}</span>
+            <div className="file-actions">
+              <Scarica name={file.name} />
+              <span className={`badge ${file.kind}`}>{DOC_KIND_LABEL[file.kind]}</span>
+            </div>
           </div>
         ));
       })}
@@ -283,7 +304,10 @@ function DistintaCard({
           </div>
         )}
       </div>
-      <span className={`badge ${file.kind}`}>{DOC_KIND_LABEL[file.kind]}</span>
+      <div className="file-actions">
+        <Scarica name={file.name} />
+        <span className={`badge ${file.kind}`}>{DOC_KIND_LABEL[file.kind]}</span>
+      </div>
     </article>
   );
 }

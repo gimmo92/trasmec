@@ -181,6 +181,31 @@ export async function saveDocumento(
   return toDocumento({ name, size: stat.size, mtimeMs: stat.mtimeMs }, meta);
 }
 
+const CONTENT_TYPE: Record<string, string> = {
+  ".pdf": "application/pdf",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".xlsm": "application/vnd.ms-excel.sheet.macroEnabled.12",
+  ".xls": "application/vnd.ms-excel",
+  ".dwg": "application/acad",
+};
+
+export function documentoContentType(name: string): string {
+  return CONTENT_TYPE[path.extname(name).toLowerCase()] ?? "application/octet-stream";
+}
+
+/** Legge un file caricato, dal disco o dallo storage, rifiutando i percorsi fuori cartella. */
+export async function readDocumento(name: string): Promise<Buffer> {
+  const safe = safeDocumentoName(name);
+  try {
+    return fs.readFileSync(resolveDocumento(safe));
+  } catch (err) {
+    if (!useCloud()) throw err;
+    const remote = await downloadFile(`documenti/${safe}`);
+    if (!remote) throw new Error("File non trovato");
+    return remote;
+  }
+}
+
 /** Risolve in modo sicuro un path relativo dentro la cartella documenti. */
 export function resolveDocumento(relPath: string): string {
   const name = path.basename(relPath);
