@@ -73,6 +73,13 @@ export default function Funzionamento() {
         <ul>
           <li>Catena di trasporto, in metri.</li>
           <li>Supporti della riga Bearing assembly.</li>
+          <li>
+            Settori dentati del riquadro Hubs for Sectors, teste motrice e di
+            rinvio. I denti vengono dalla colonna z, il passo dal tipo catena
+            (14226 dà P=142). Il codice è quello del listino, per esempio
+            SETTORE-Z10-P142-V. Le quantità delle due teste si sommano se i
+            denti sono gli stessi.
+          </li>
           <li>Sprinkler. I supporti e le piastre dello sprinkler non entrano.</li>
           <li>
             Porte explosion proof: solo i Bursting Panels. Telaio e cover restano

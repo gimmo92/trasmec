@@ -247,8 +247,8 @@ function addBurstingDoors(grid: Grid, push: (row: BomRow) => void) {
 
 /**
  * Distinta base TKK (foglio "1"): non c'è la tabella Part Number.
- * Estrae i ricambi dalle sezioni etichettate: supporti, catena, sprinkler,
- * explosion proof door e, solo sulla catena doppia, gli scraper.
+ * Estrae i ricambi dalle sezioni etichettate: supporti, catena, settori,
+ * sprinkler, explosion proof door e, solo sulla catena doppia, gli scraper.
  */
 export function extractConfigBom(grids: Record<string, Grid>): {
   rows: BomRow[];
@@ -361,6 +361,7 @@ export function extractConfigBom(grids: Record<string, Grid>): {
   }
 
   addBurstingDoors(grid, push);
+  addToothedSectors(grid, push, warnings);
 
   const pala = palaMaterialFromCodici(grids["Codici"], machineId, machineStd);
   const hasPala = pala ? pala.toUpperCase() !== "NO" : chainMeters > 0 || chainLinks > 0;
@@ -383,6 +384,67 @@ export function extractConfigBom(grids: Record<string, Grid>): {
   }
 
   return { rows, warnings, sheetUsed: "1" };
+}
+
+/** Passo catena dal tipo, per esempio 14226 MN → 142. Serve al codice del settore. */
+function configChainPitch(grid: Grid): string {
+  for (let r = 0; r < grid.length; r++) {
+    if (cellStr(grid[r]?.[1]).toLowerCase() !== "conveying chain") continue;
+    for (let k = r + 1; k < Math.min(grid.length, r + 8); k++) {
+      const type = cellStr(grid[k]?.[5]);
+      const size = type.match(/\b(\d{3})\d{2,}\b/);
+      if (size) return size[1];
+    }
+  }
+  return "";
+}
+
+/**
+ * Settori dentati del riquadro Hubs for Sectors (teste motrice e di rinvio).
+ * Il codice listino è SECTOR-Z10-P142: denti della colonna z, passo della catena.
+ */
+function addToothedSectors(
+  grid: Grid,
+  push: (row: BomRow) => void,
+  warnings: string[]
+) {
+  const pitch = configChainPitch(grid);
+  for (let r = 0; r < grid.length; r++) {
+    const header = (grid[r] ?? []).map((cell) => norm(cell));
+    const toothCol = header.findIndex((cell) => cell === "toothed sectors");
+    if (toothCol < 0) continue;
+    const fields = grid[r + 1] ?? [];
+    const zCol = fields.findIndex((cell, index) => index >= toothCol && norm(cell) === "z");
+    if (zCol < 0) {
+      warnings.push("Settori: nel riquadro Hubs for Sectors manca la colonna z.");
+      continue;
+    }
+    for (let k = r + 2; k < Math.min(grid.length, r + 8); k++) {
+      const data = grid[k] ?? [];
+      const name = cellStr(data[1]);
+      if (/bearing assemblies|fasteners|sprinkler/i.test(name)) break;
+      const qty = parseNum(data[toothCol]);
+      const teeth = cellStr(data[zCol]).replace(/^z\s*=?\s*/i, "");
+      if (!qty || qty <= 0 || !/^\d+$/.test(teeth)) continue;
+      const z = teeth.padStart(2, "0");
+      if (!pitch) {
+        warnings.push(`Settori z=${z}: passo catena non trovato, codice listino non assegnato.`);
+        push({
+          partNumber: `SECTOR-Z${z}`,
+          descriptionEN: `Toothed SECTOR Z=${z}`,
+          qty,
+          um: "NR",
+        });
+        continue;
+      }
+      push({
+        partNumber: `SECTOR-Z${z}-P${pitch}`,
+        descriptionEN: `Toothed SECTOR Z=${z} P=${pitch}`,
+        qty,
+        um: "NR",
+      });
+    }
+  }
 }
 
 /** Colonna "pale" del foglio Codici, allineata a ID macchina + esecuzione (es. TKKB79 / E01). */

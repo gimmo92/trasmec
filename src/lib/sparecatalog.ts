@@ -358,6 +358,7 @@ async function buildCatalog(filePath: string): Promise<SpareCatalog> {
     }
 
     indexChainSheet(catalog, ws.name, headerRow, colCodice, colOggetto, ws, maxRow);
+    indexSectorSheet(catalog, ws);
   }
 
   for (const list of [
@@ -372,6 +373,34 @@ async function buildCatalog(filePath: string): Promise<SpareCatalog> {
   }
 
   return catalog;
+}
+
+/** KIT SETTORI: Z=10 e passo 142 → SETTORE-Z10-P142-V. */
+function indexSectorSheet(catalog: SpareCatalog, ws: ExcelJS.Worksheet) {
+  if (!/kit\s*settori/i.test(ws.name)) return;
+  const maxRow = Math.min(ws.rowCount || 0, 400);
+  const maxCol = Math.min(ws.columnCount || 0, 12);
+  let colCode = -1;
+  for (let r = 1; r <= Math.min(maxRow, 40) && colCode < 0; r++) {
+    for (let c = 1; c <= maxCol; c++) {
+      if (cellStr(ws.getRow(r).getCell(c).value).toLowerCase() === "codice") {
+        colCode = c;
+        break;
+      }
+    }
+  }
+  if (colCode < 0) return;
+  for (let r = 1; r <= maxRow; r++) {
+    const title = cellStr(ws.getRow(r).getCell(1).value);
+    const spec = title.match(/^SETTORE\s+Z\s*=\s*(\d+)\s+P\s*=?\s*(\d+)/i);
+    if (!spec) continue;
+    const code = cellStr(ws.getRow(r).getCell(colCode).value);
+    if (!code) continue;
+    const z = spec[1].padStart(2, "0");
+    const info = { code, description: title.replace(/\s+/g, " ").trim() };
+    catalog.assemblyByKey.set(normKey(`Z${z}P${spec[2]}`), info);
+    catalog.assemblyByBom.set(`SECTOR-Z${z}-P${spec[2]}`, info);
+  }
 }
 
 /** Catene di trasporto TKK: 14226MN → CT0067 (e varianti TRASPORTCHAIN…). */

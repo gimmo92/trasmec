@@ -92,6 +92,10 @@ function tokenAccepted(token: string, word: string): boolean {
 }
 
 function familyToken(desc: string, token: string): string {
+  if (/^SECTOR$/i.test(token)) {
+    const spec = desc.match(/Z\s*=\s*(\d+)(?:\D+P\s*=\s*(\d+))?/i);
+    if (spec) return spec[2] ? `Z${spec[1]} P${spec[2]}` : `Z${spec[1]}`;
+  }
   const chainType = desc.match(/(\d{4,})\s*(MN|CN)/i);
   if (chainType && /chain|trasport|convey/i.test(`${token} ${desc}`)) {
     return `${chainType[1]}${chainType[2]}`.toUpperCase();
