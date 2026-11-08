@@ -124,6 +124,22 @@ function isYellowGroupPart(code: string): boolean {
   return true;
 }
 
+/** Una cella listino può elencare due codici, uno per riga (CU1047). */
+function splitCellLines(raw: string): string[] {
+  return raw
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function preferredBearingDesc(code: string, desc: string): string {
+  const clean = desc.replace(/\s+/g, " ").trim();
+  if (clean && normKey(clean) !== normKey(code)) return clean;
+  const model = code.toUpperCase().match(/\d{4,}/)?.[0];
+  if (/^CUS-/i.test(code) && model) return `Bearing ${model}`;
+  return clean || code;
+}
+
 /** D135 in distinta = scheda listino TKK Ø=135; TK-R 70 = SUPPORTO TK-R70. */
 function supportAliases(sheetName: string): string[] {
   const key = normKey(sheetName);
@@ -168,6 +184,13 @@ function addBearings(map: Map<string, CatalogBearing[]>, key: string, items: Cat
 
 async function buildCatalog(filePath: string): Promise<SpareCatalog> {
   const catalog = emptyCatalog();
+  const namedDesc = new Map<string, string>();
+  const rememberDesc = (code: string, desc: string) => {
+    const clean = desc.replace(/\s+/g, " ").trim();
+    if (!clean || normKey(clean) === normKey(code)) return;
+    const key = code.toUpperCase();
+    if (!namedDesc.has(key)) namedDesc.set(key, clean);
+  };
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.readFile(filePath);
 
@@ -231,11 +254,25 @@ async function buildCatalog(filePath: string): Promise<SpareCatalog> {
           if (!sell && !name) continue;
           const bearings: CatalogBearing[] = [];
           for (const codeIdx of codeIdxs) {
-            const part = cellStr(row.getCell(codeIdx).value);
-            if (!part || !isYellowFill(row.getCell(codeIdx).fill)) continue;
-            if (!isYellowGroupPart(part)) continue;
-            const partDesc = cellStr(row.getCell(codeIdx - 1).value);
-            bearings.push({ code: part, description: partDesc || part, qty: 1 });
+            if (codeIdx === supportCodeCol) continue;
+            const rawPart = cellStr(row.getCell(codeIdx).value);
+            if (!rawPart || !isYellowFill(row.getCell(codeIdx).fill)) continue;
+            const parts = splitCellLines(rawPart);
+            const descLines = splitCellLines(cellStr(row.getCell(codeIdx - 1).value));
+            for (let i = 0; i < parts.length; i++) {
+              const part = parts[i];
+              if (!isYellowGroupPart(part)) continue;
+              const partDesc =
+                descLines.length === parts.length
+                  ? descLines[i] || ""
+                  : descLines[0] || "";
+              if (parts.length === 1) rememberDesc(part, partDesc);
+              bearings.push({
+                code: part,
+                description: preferredBearingDesc(part, partDesc),
+                qty: 1,
+              });
+            }
           }
           if (sell) {
             addBearings(catalog.bearingsBySellable, sell, bearings);
@@ -321,6 +358,17 @@ async function buildCatalog(filePath: string): Promise<SpareCatalog> {
     }
 
     indexChainSheet(catalog, ws.name, headerRow, colCodice, colOggetto, ws, maxRow);
+  }
+
+  for (const list of [
+    ...catalog.bearingsByKey.values(),
+    ...catalog.bearingsByBom.values(),
+    ...catalog.bearingsBySellable.values(),
+  ]) {
+    for (const bearing of list) {
+      const named = namedDesc.get(bearing.code.toUpperCase());
+      if (named) bearing.description = named;
+    }
   }
 
   return catalog;

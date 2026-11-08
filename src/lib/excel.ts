@@ -671,6 +671,34 @@ export function parseBom(filePath: string, relPath: string): ParsedBom {
   };
 }
 
+/**
+ * Coclea: il cuscinetto di CU1047 può stare in un altro foglio della commessa
+ * (distinta), non sulla riga del supporto. Queste righe non hanno part number,
+ * quindi non diventano ricambi: servono solo a scegliere CUS-22217K o CUS-21314.
+ */
+function appendBearingHints(grids: Record<string, Grid>, rows: BomRow[]): void {
+  const seen = new Set<string>();
+  for (const grid of Object.values(grids)) {
+    for (const drow of grid ?? []) {
+      const text = (drow ?? [])
+        .map((c) => cellStr(c))
+        .filter(Boolean)
+        .join(" ");
+      if (text.length < 4 || text.length > 500) continue;
+      if (
+        !/cuscinett|\bbearing\b|\bCUS-[A-Z0-9-]+/i.test(text) &&
+        !/\b2\d{4}\s*E[A-Z]?\b/i.test(text)
+      ) {
+        continue;
+      }
+      const key = text.toUpperCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push({ descriptionEN: text, source: "hint" });
+    }
+  }
+}
+
 /** Estrae, in un'unica lettura, intestazione + tutte le righe BOM (per l'offerta). */
 export function parseBomForOffer(
   filePath: string,
@@ -690,6 +718,7 @@ export function parseBomForOffer(
       ? "config"
       : "unknown";
   const { rows, warnings } = extractAllBomRows(grids);
+  if (format === "unknown") appendBearingHints(grids, rows);
   return {
     file: filePath.split(/[\\/]/).pop() ?? filePath,
     format,
@@ -796,12 +825,24 @@ export function extractSchedaBom(grids: Record<string, Grid>): {
       else partNumber = description.split(/\s+/).slice(0, 3).join(" ");
     }
     const umRaw = umCol >= 0 ? cellStr(row[umCol]) : "";
+    const detailParts: string[] = [];
+    for (let c = 0; c < row.length; c++) {
+      if (c === flagCol || c === qtyCol || c === codeCol || c === kindCol || c === umCol || c === machineCol) {
+        continue;
+      }
+      const text = cellStr(row[c]);
+      if (!text || text === description || text === partNumber) continue;
+      if (/\bCUS-[A-Z0-9-]+/i.test(text) || /\b2\d{4}\b/.test(text) || /cuscinett|\bbearing\b/i.test(text)) {
+        detailParts.push(text);
+      }
+    }
     rows.push({
       partNumber,
       descriptionEN: description,
       qty,
       um: /^m(t|m)?$/i.test(umRaw) ? "MT" : umRaw && !isBlankType(umRaw) ? umRaw : "NR",
       source: "scheda",
+      detail: detailParts.join(" ") || undefined,
     });
   }
   if (!rows.length) {

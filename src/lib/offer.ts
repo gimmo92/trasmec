@@ -284,40 +284,99 @@ function isCu1047(code: string): boolean {
   return normKey(code) === "CU1047";
 }
 
-const GENERIC_BEARING = /^(CUSCINETTO|CUSCINETTI|BEARING|BEARINGS)$/;
+function splitBearingCodes(bearing: CatalogBearing): CatalogBearing[] {
+  const codes = bearing.code
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (codes.length <= 1) return [bearing];
+  const descs = bearing.description
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return codes.map((code, i) => ({
+    code,
+    description: descs.length === codes.length ? descs[i] || code : descs[0] || code,
+    qty: bearing.qty,
+  }));
+}
+
+/** CUS-22217K → 22217, così si riconosce "22217 EK" in distinta. */
+function bearingModel(code: string): string {
+  const nums = code.toUpperCase().match(/\d{4,}/g) ?? [];
+  return nums.sort((a, b) => b.length - a.length)[0] ?? "";
+}
+
+function bomRowBlob(row: BomRow): string {
+  return [row.partNumber, row.descriptionEN, row.descriptionIT, row.detail]
+    .filter((v) => v !== undefined && v !== null && String(v).trim())
+    .join(" ");
+}
 
 /**
- * Tra i cuscinetti della spare parts list tiene solo quello indicato
- * dalla riga BOM CU1047 (codice o descrizione). Non aggiunge l'altro.
+ * CU1047 in listino ha due cuscinetti CUS nella stessa cella.
+ * Tiene solo quello il cui modello (o codice) compare nella distinta della commessa.
  */
-function pickCu1047Bearing(bearings: CatalogBearing[], group: Hit[]): CatalogBearing | null {
-  const rows = group.filter((h) => isCu1047(h.pn) || isCu1047(h.desc));
-  if (!rows.length || !bearings.length) return null;
-  let best: { bearing: CatalogBearing; score: number } | null = null;
+function pickCu1047Bearing(bearings: CatalogBearing[], bom: BomRow[]): CatalogBearing | null {
+  const options: CatalogBearing[] = [];
+  const seen = new Set<string>();
   for (const bearing of bearings) {
-    const bCode = normKey(bearing.code);
-    const bDesc = normKey(bearing.description);
-    let score = 0;
-    for (const row of rows) {
-      const pn = normKey(row.pn);
-      const desc = normKey(row.desc);
-      if (bCode && bCode === pn) score = Math.max(score, 100);
-      if (bCode && bCode !== "CU1047" && desc.includes(bCode)) score = Math.max(score, 80);
-      if (bDesc && desc && bDesc === desc) score = Math.max(score, 70);
-      if (
-        bDesc &&
-        desc &&
-        !GENERIC_BEARING.test(bDesc) &&
-        !GENERIC_BEARING.test(desc) &&
-        (desc.includes(bDesc) || bDesc.includes(desc))
-      ) {
-        const overlap = desc.includes(bDesc) ? bDesc.length : desc.length;
-        if (overlap >= 4) score = Math.max(score, Math.min(69, 40 + overlap));
-      }
+    for (const part of splitBearingCodes(bearing)) {
+      if (!/^CUS-/i.test(part.code)) continue;
+      const key = normKey(part.code);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      options.push(part);
     }
-    if (score > 0 && (!best || score > best.score)) best = { bearing, score };
   }
-  return best?.bearing ?? null;
+  if (!options.length) return null;
+  if (options.length === 1) return options[0];
+
+  let best: { bearing: CatalogBearing; score: number } | null = null;
+  let tie = false;
+  for (const bearing of options) {
+    const code = normKey(bearing.code);
+    const model = bearingModel(bearing.code);
+    const modelRe = model ? new RegExp(`(^|[^0-9])${model}([^0-9]|$)`) : null;
+    let score = 0;
+    for (const row of bom) {
+      const text = bomRowBlob(row);
+      if (!text) continue;
+      const hint = row.source === "hint";
+      const blob = normKey(text);
+      if (code && blob.includes(code)) {
+        score = Math.max(score, hint ? 50 : 100);
+        continue;
+      }
+      if (!modelRe || !modelRe.test(text)) continue;
+      const bearingRow = /cuscinett|\bbearing\b/i.test(text);
+      score = Math.max(score, hint ? 40 : bearingRow ? 80 : 60);
+    }
+    if (score <= 0) continue;
+    if (!best || score > best.score) {
+      best = { bearing, score };
+      tie = false;
+    } else if (score === best.score && normKey(bearing.code) !== normKey(best.bearing.code)) {
+      tie = true;
+    }
+  }
+  if (!best || tie) return null;
+  return best.bearing;
+}
+
+function cu1047Options(bearings: CatalogBearing[]): string[] {
+  const codes: string[] = [];
+  const seen = new Set<string>();
+  for (const bearing of bearings) {
+    for (const part of splitBearingCodes(bearing)) {
+      if (!/^CUS-/i.test(part.code)) continue;
+      const key = normKey(part.code);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      codes.push(part.code.replace(/\s+/g, " ").trim());
+    }
+  }
+  return codes;
 }
 
 function bearingsFor(
@@ -431,7 +490,8 @@ function groupHits(hits: Hit[]): Hit[][] {
 function linesFromGroup(
   group: Hit[],
   map: SpareCodeMap,
-  catalog: SpareCatalog
+  catalog: SpareCatalog,
+  bom: BomRow[]
 ): { lines: ProposalLine[]; warnings: string[] } {
   const warnings: string[] = [];
   const indexRow = group[0].indexRow;
@@ -484,12 +544,18 @@ function linesFromGroup(
   if (hasCuscinetti(indexRow.gestione) && useList) {
     const fromList = bearingsFor(pns, family, code, catalog);
     const cu1047 = group.some((h) => isCu1047(h.pn) || isCu1047(h.desc)) || isCu1047(code);
-    const brgs = cu1047
-      ? [pickCu1047Bearing(fromList, group)].filter((b): b is CatalogBearing => Boolean(b))
-      : fromList;
+    const chosen = cu1047 ? pickCu1047Bearing(fromList, bom) : null;
+    const brgs = cu1047 ? (chosen ? [chosen] : []) : fromList;
     if (!fromList.length) {
       warnings.push(
         `Gruppo cuscinetti non trovato nel listino per ${code} (${family}).`
+      );
+    } else if (cu1047 && !chosen) {
+      const options = cu1047Options(fromList);
+      warnings.push(
+        options.length
+          ? `CU1047: in distinta non risulta quale cuscinetto tenere tra ${options.join(", ")}.`
+          : `CU1047: in distinta non risulta il cuscinetto da mettere sotto il supporto.`
       );
     } else if (brgs.length) {
       lines[0].highlightGroup = "cuscinetti";
@@ -877,7 +943,7 @@ export async function buildSparePartsOffer(
     let supportHue = 0;
 
     for (const g of groups) {
-      const res = linesFromGroup(g, spareMap, catalog);
+      const res = linesFromGroup(g, spareMap, catalog, parsed.bom);
       const isSupport = res.lines.some((l) => l.highlightGroup === "cuscinetti");
       const grouped = isComposto(g[0].indexRow.gestione) || isSupport;
       if (grouped) {
