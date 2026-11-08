@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { DOC_KIND_LABEL, FILE_GENERALI, type DocumentoFile, type MachineSection, type Offer, type ProposalLine } from "@/lib/types";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DOC_KIND_LABEL, FILE_GENERALI, type DocumentoFile, type MachineSection, type Offer, type OffertaStoricoVoce, type ProposalLine } from "@/lib/types";
 import { compoundFillIndex, isNonSeSensorLine, supportFillIndex } from "@/lib/highlight";
 import { machineLabel, offerUnit, projectLabel } from "@/lib/machinelabel";
 import { classifyComponent } from "@/lib/spareclass";
@@ -23,6 +23,22 @@ function formatSize(bytes: number): string {
 }
 
 type LineKind = "spares" | "motors" | "sensors";
+
+function formatWhen(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString("it-IT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function storicoLabel(item: OffertaStoricoVoce): string {
+  return item.orderNumber || item.projectName || item.sourceFile || "Offerta";
+}
 
 function formatQty(qty: number | null | undefined): string {
   if (qty === null || qty === undefined) return "";
@@ -183,6 +199,15 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
   const [offer, setOffer] = useState<Offer | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [history, setHistory] = useState<OffertaStoricoVoce[]>([]);
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const savedIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    savedIdRef.current = savedId;
+  }, [savedId]);
 
   const reloadDocs = useCallback(async () => {
     const res = await fetch("/api/archivio");
@@ -205,12 +230,20 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
       .catch(() => setHealth(null));
   }, []);
 
+  const reloadHistory = useCallback(async () => {
+    const res = await fetch("/api/storico");
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(String(data.error || "Errore storico"));
+    setHistory(Array.isArray(data.items) ? (data.items as OffertaStoricoVoce[]) : []);
+  }, []);
+
   useEffect(() => {
     if (!active) return;
     reloadDocs()
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoadingDocs(false));
-  }, [active, reloadDocs]);
+    reloadHistory().catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }, [active, reloadDocs, reloadHistory]);
 
   const ordini = useMemo(() => docs.filter((d) => d.kind === "ordine"), [docs]);
   const distinte = useMemo(
@@ -242,7 +275,31 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
     setOrderPath(path);
     setSelected(new Set());
     setOffer(null);
+    savedIdRef.current = null;
+    setSavedId(null);
   }, []);
+
+  const remember = useCallback((item: OffertaStoricoVoce) => {
+    savedIdRef.current = item.id;
+    setSavedId(item.id);
+    setHistory((prev) => [item, ...prev.filter((row) => row.id !== item.id)]);
+    setSavedFlash(true);
+    window.setTimeout(() => setSavedFlash(false), 2000);
+  }, []);
+
+  const persistOffer = useCallback(
+    async (next: Offer, id: string | null) => {
+      const res = await fetch(id ? `/api/storico/${id}` : "/api/storico", {
+        method: id ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ offer: next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(data.error || "Salvataggio non riuscito"));
+      remember(data.item as OffertaStoricoVoce);
+    },
+    [remember]
+  );
 
   const generate = useCallback(async () => {
     if (!orderPath) {
@@ -252,6 +309,8 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
     setGenerating(true);
     setError(null);
     setOffer(null);
+    setSavedId(null);
+    savedIdRef.current = null;
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
@@ -260,19 +319,29 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Errore");
-      setOffer(data.offer);
+      const next = data.offer as Offer;
+      setOffer(next);
+      try {
+        await persistOffer(next, null);
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? `Offerta generata, storico non aggiornato: ${err.message}`
+            : "Offerta generata, storico non aggiornato"
+        );
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setGenerating(false);
     }
-  }, [orderPath, selected]);
+  }, [orderPath, selected, persistOffer]);
 
   const removeLine = useCallback(
     (itemCode: string, kind: LineKind, index: number) => {
       setOffer((prev) => {
         if (!prev) return prev;
-        return {
+        const next: Offer = {
           ...prev,
           machines: prev.machines.map((m) => {
             if (m.itemCode !== itemCode) return m;
@@ -280,9 +349,73 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
             return { ...m, [kind]: list };
           }),
         };
+        const id = savedIdRef.current;
+        if (id) {
+          void persistOffer(next, id).catch((err) =>
+            setError(err instanceof Error ? err.message : String(err))
+          );
+        }
+        return next;
       });
     },
-    []
+    [persistOffer]
+  );
+
+  const saveCurrent = useCallback(async () => {
+    if (!offer) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await persistOffer(offer, savedIdRef.current);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  }, [offer, persistOffer]);
+
+  const openSaved = useCallback(
+    async (id: string) => {
+      setError(null);
+      try {
+        const res = await fetch(`/api/storico/${id}`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(String(data.error || "Offerta non trovata nello storico"));
+        const stored = data.item as { offer: Offer; sourceFile?: string };
+        setOffer(stored.offer);
+        savedIdRef.current = id;
+        setSavedId(id);
+        setSelected(new Set());
+        const source = stored.sourceFile || "";
+        const match = ordini.find((doc) => doc.name === source || doc.path === source);
+        setOrderPath(match?.path ?? "");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [ordini]
+  );
+
+  const removeSaved = useCallback(
+    async (id: string) => {
+      const item = history.find((row) => row.id === id);
+      const label = item ? storicoLabel(item) : "questa offerta";
+      if (!window.confirm(`Eliminare ${label} dallo storico?`)) return;
+      setError(null);
+      try {
+        const res = await fetch(`/api/storico/${id}`, { method: "DELETE" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(String(data.error || "Eliminazione non riuscita"));
+        setHistory((prev) => prev.filter((row) => row.id !== id));
+        if (savedIdRef.current === id) {
+          savedIdRef.current = null;
+          setSavedId(null);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [history]
   );
 
   const exportExcel = useCallback(async () => {
@@ -325,6 +458,37 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
         </div>
         <div className="doc-list">
           {loadingDocs && <div className="status">Caricamento…</div>}
+
+          <div className="section-title">Storico ({history.length})</div>
+          {history.length === 0 && !loadingDocs && (
+            <div className="hint">Nessuna offerta salvata. Una generazione resta qui.</div>
+          )}
+          {history.map((item) => (
+            <div
+              key={item.id}
+              className={`doc ${savedId === item.id ? "selected" : ""}`}
+              onClick={() => void openSaved(item.id)}
+            >
+              <div className="meta">
+                <div className="name">{storicoLabel(item)}</div>
+                <div className="sub">
+                  {[item.customer, formatWhen(item.updatedAt)].filter(Boolean).join(" · ")}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="storico-del"
+                title="Elimina dallo storico"
+                aria-label={`Elimina ${storicoLabel(item)} dallo storico`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void removeSaved(item.id);
+                }}
+              >
+                ×
+              </button>
+            </div>
+          ))}
 
           <div className="section-title">Offerte ({ordini.length})</div>
           {ordini.length === 0 && !loadingDocs && (
@@ -451,6 +615,9 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
             </p>
           </div>
           <div className="actions">
+            <button onClick={() => void saveCurrent()} disabled={!offer || saving}>
+              {saving ? "Salvataggio…" : savedFlash ? "Salvata" : "Salva"}
+            </button>
             <button onClick={() => window.print()} disabled={!offer}>
               Stampa / PDF
             </button>

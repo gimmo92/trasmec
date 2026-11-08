@@ -169,6 +169,23 @@ export interface Offer {
   meta?: Record<string, unknown>;
 }
 
+/** Voce dello storico, senza il corpo dell'offerta. */
+export interface OffertaStoricoVoce {
+  id: string;
+  savedAt: string;
+  updatedAt: string;
+  orderNumber?: string;
+  customer?: string;
+  projectName?: string;
+  orderDate?: string;
+  sourceFile?: string;
+}
+
+/** Offerta lista impianto salvata, riapribile dallo storico. */
+export interface OffertaStorico extends OffertaStoricoVoce {
+  offer: Offer;
+}
+
 /** Flag SI/NO per presenza nel Spare Parts List. */
 export type SparePartsFlag = "SI" | "NO";
 
