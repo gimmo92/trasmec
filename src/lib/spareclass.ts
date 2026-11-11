@@ -77,8 +77,10 @@ export function classifyComponent(
     (/\bsupporto?\b/i.test(`${line.descriptionEN || ""} ${line.descriptionIT || ""}`) ||
       /^SUP-/i.test(codeU));
   if (supportLine) {
-    if (/\bTM\d|\bTM\b|SUP-TM/i.test(`${code} ${text}`)) return row(30, "*", "S");
-    if (/\bSN[LH]?\s*\d|\bSNL|\bSNH|\bUKT|\bFN\s*\d/i.test(text)) return row(20, "**", "S");
+    const blob = `${code} ${text}`;
+    if (/\bTM\d|\bTM\b|SUP-TM/i.test(blob)) return row(30, "*", "S");
+    if (/\bSN[LH]?\s*\d|\bSNL|\bSNH|\bUKT|\bFN\s*\d/i.test(blob)) return row(20, "**", "S");
+    if (/TKK-SUP-|TK-SUP-|\bTKK\b|\bTK-?\s*R\b|\bD\d{2,3}\b/i.test(blob)) return row(20, "**", "S");
     return EMPTY;
   }
 

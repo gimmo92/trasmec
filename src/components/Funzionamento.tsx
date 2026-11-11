@@ -226,7 +226,8 @@ export default function Funzionamento() {
           <tbody>
             <tr><td>Supporto TM</td><td>30</td><td>*</td><td>S</td></tr>
             <tr><td>Supporto SN, SNL, SNH, UKT, FN</td><td>20</td><td>**</td><td>S</td></tr>
-            <tr><td>Supporto FL, TK-R e altri non in elenco</td><td></td><td></td><td></td></tr>
+            <tr><td>Supporto TK, TK-R, TKK</td><td>20</td><td>**</td><td>S</td></tr>
+            <tr><td>Supporto FL e altri non in elenco</td><td></td><td></td><td></td></tr>
             <tr><td>Cuscinetto, bussola, ralla, tenuta, kit settori</td><td>20</td><td>***</td><td>W</td></tr>
             <tr><td>Catena di trasmissione</td><td>5</td><td>***</td><td>W</td></tr>
             <tr><td>Catena di trasporto, tappeto</td><td>60</td><td>***</td><td>W</td></tr>
