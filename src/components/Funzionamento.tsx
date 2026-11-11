@@ -120,6 +120,13 @@ export default function Funzionamento() {
             esempio «Chain - L=-», la catena non si mette. Il giunto a catena
             non è questa catena.
           </li>
+          <li>
+            Catena di trasmissione: in descrizione restano i pollici, per esempio
+            Chain 2-1/2&quot;D, senza la lunghezza. Il codice è quello della pagina
+            Catena di Trasmissione, per esempio CATENA-2-1/2-D-REX. Sotto si
+            aggiunge la maglia di giunzione dello stesso passo, con codice e
+            descrizione del listino.
+          </li>
           <li>Motori MR e sensori SE della scheda non sono ricambi di distinta: stanno nelle liste ML e SL.</li>
         </ul>
       </section>

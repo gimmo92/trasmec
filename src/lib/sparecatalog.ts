@@ -13,6 +13,14 @@ interface AssemblyInfo {
   description?: string;
 }
 
+/** Catena di trasmissione e, se c'è, la maglia di giunzione dello stesso passo. */
+export interface TransmissionChain {
+  code: string;
+  description: string;
+  linkCode?: string;
+  linkDescription?: string;
+}
+
 export interface SpareCatalog {
   /** TM100CLC → C003577-S, ultimo codice giallo della scheda. */
   assemblyByKey: Map<string, AssemblyInfo>;
@@ -24,6 +32,8 @@ export interface SpareCatalog {
   bearingsByBom: Map<string, CatalogBearing[]>;
   /** SUP-SNH-520-ISB → cuscinetti della riga */
   bearingsBySellable: Map<string, CatalogBearing[]>;
+  /** 2-1/2D → CATENA-2-1/2-D-REX e la maglia MG-… */
+  transmissionChains: Map<string, TransmissionChain>;
 }
 
 let cache: { key: string; catalog: SpareCatalog } | null = null;
@@ -165,7 +175,103 @@ function emptyCatalog(): SpareCatalog {
     bearingsByKey: new Map(),
     bearingsByBom: new Map(),
     bearingsBySellable: new Map(),
+    transmissionChains: new Map(),
   };
+}
+
+/**
+ * 2-1/2"D, 1"3/4 S, 2"1/2 DOPPIO o CATENA-2-1/2-D-REX → 2-1/2D, 1-3/4S, 2-1/2D.
+ * Senza passo in pollici e senza semplice/doppio non è una catena di trasmissione.
+ */
+export function transmissionChainKey(text: string): string | null {
+  const code = text.toUpperCase().match(/\bCATENA-(.+)-([SD])-REX\b/);
+  if (code) return `${code[1]}${code[2]}`;
+  const raw = text
+    .toUpperCase()
+    .replace(/L\s*=\s*[-–]?\s*\d[\d.,]*/g, " ");
+  let strand = "";
+  if (/\bDOPPI[AO]\b|\bDOUBLE\b/.test(raw)) strand = "D";
+  else if (/\bSEMPLIC[EI]\b|\bSINGLE\b/.test(raw)) strand = "S";
+  const m = raw.match(
+    /(\d+)\s*(?:["″']\s*(\d+)\s*\/\s*(\d+)|-\s*(\d+)\s*\/\s*(\d+))?\s*["″']?\s*([SD])?\b/
+  );
+  if (!m) return null;
+  const num = m[2] || m[4];
+  const den = m[3] || m[5];
+  const pitch = num && den ? `${m[1]}-${num}/${den}` : m[1];
+  const sd = m[6] || strand;
+  if (sd !== "S" && sd !== "D") return null;
+  if (!/["″']/.test(raw) && !/-\s*\d+\s*\//.test(raw)) return null;
+  return `${pitch}${sd}`;
+}
+
+function transmissionText(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "object") {
+    const cell = v as { richText?: { text: string }[]; text?: string; result?: unknown };
+    if (Array.isArray(cell.richText)) return cell.richText.map((part) => part.text).join("").trim();
+    if (typeof cell.text === "string") return cell.text.trim();
+    if (cell.result != null) return String(cell.result).trim();
+  }
+  return String(v).trim();
+}
+
+/** Pagina Catena di Trasmissione, più la maglia di giunzione dello stesso passo. */
+function indexTransmissionChains(catalog: SpareCatalog, ws: ExcelJS.Worksheet): void {
+  const maxRow = Math.min(ws.rowCount || 0, 800);
+  const maxCol = Math.min(ws.columnCount || 0, 12);
+  if (/catena\s+di\s+trasmissione/i.test(ws.name)) {
+    let dimCol = -1;
+    let descCol = -1;
+    let codeCol = -1;
+    let header = -1;
+    for (let r = 1; r <= Math.min(maxRow, 20) && header < 0; r++) {
+      for (let c = 1; c <= maxCol; c++) {
+        const label = transmissionText(ws.getRow(r).getCell(c).value).toLowerCase();
+        if (label.startsWith("dimesion") || label.startsWith("dimension")) dimCol = c;
+        if (label === "descrizione" || label === "description") descCol = c;
+        if (label === "codice" || label === "code") codeCol = c;
+      }
+      if (dimCol > 0 && codeCol > 0) header = r;
+    }
+    if (header > 0) {
+      for (let r = header + 1; r <= maxRow; r++) {
+        const row = ws.getRow(r);
+        const size = transmissionText(row.getCell(dimCol).value);
+        const code = transmissionText(row.getCell(codeCol).value);
+        if (!size || !/^CATENA-/i.test(code)) continue;
+        const key = transmissionChainKey(size);
+        if (!key) continue;
+        const prev = catalog.transmissionChains.get(key);
+        catalog.transmissionChains.set(key, {
+          code,
+          description: descCol > 0 ? transmissionText(row.getCell(descCol).value) : "",
+          linkCode: prev?.linkCode,
+          linkDescription: prev?.linkDescription,
+        });
+      }
+    }
+  }
+
+  for (let r = 1; r <= maxRow; r++) {
+    const cells: string[] = [];
+    for (let c = 1; c <= maxCol; c++) cells.push(transmissionText(ws.getRow(r).getCell(c).value));
+    const desc = cells.find((cell) => /^MAGLIA\s+GIUNZIONE\b/i.test(cell));
+    const code = cells.find((cell) => /^MG-/i.test(cell));
+    if (!desc || !code) continue;
+    const key = transmissionChainKey(desc);
+    if (!key) continue;
+    const prev = catalog.transmissionChains.get(key);
+    const linkDescription = desc.replace(/\s+/g, " ").trim();
+    const keepPrev =
+      prev?.linkCode === code && (prev.linkDescription?.length ?? 0) >= linkDescription.length;
+    catalog.transmissionChains.set(key, {
+      code: prev?.code ?? "",
+      description: prev?.description ?? "",
+      linkCode: keepPrev ? prev?.linkCode : code,
+      linkDescription: keepPrev ? prev?.linkDescription : linkDescription,
+    });
+  }
 }
 
 function addBearings(map: Map<string, CatalogBearing[]>, key: string, items: CatalogBearing[]) {
@@ -195,6 +301,7 @@ async function buildCatalog(filePath: string): Promise<SpareCatalog> {
   await wb.xlsx.readFile(filePath);
 
   for (const ws of wb.worksheets) {
+    indexTransmissionChains(catalog, ws);
     const key = normKey(ws.name);
     if (!key) continue;
 

@@ -9,6 +9,7 @@ import {
   getSpareCatalog,
   catalogLookup,
   normKey,
+  transmissionChainKey,
   type CatalogBearing,
   type SpareCatalog,
 } from "./sparecatalog";
@@ -715,6 +716,60 @@ function isChainLine(line: ProposalLine): boolean {
   return /\b(chain|catena)\b/i.test(text);
 }
 
+/** 2-1/2D → 2-1/2"D. La lunghezza in metri non entra in descrizione. */
+function transmissionInches(key: string): string {
+  const m = key.match(/^(.*?)([SD])$/);
+  return m ? `${m[1]}"${m[2]}` : key;
+}
+
+/**
+ * Catena di trasmissione: codice della pagina Catena di Trasmissione,
+ * descrizione solo con i pollici, e sotto la maglia di giunzione dello stesso passo.
+ */
+function applyTransmissionChains(
+  spares: ProposalLine[],
+  catalog: SpareCatalog,
+  warnings: string[]
+): void {
+  const source = spares.filter((line) => line.notes !== "maglia di giunzione");
+  const out: ProposalLine[] = [];
+  for (const line of source) {
+    const blob = lineBlob(line);
+    const coupling = /coupling|giunto/i.test(blob) && !/maglia\s+giunzione/i.test(blob);
+    const key = coupling ? null : transmissionChainKey(line.code) || transmissionChainKey(blob);
+    const part = key ? catalog.transmissionChains.get(key) : undefined;
+    const chain = /\b(chain|catena)\b/i.test(blob) || /^CATENA-/i.test(line.code);
+    if (!key || !chain || !part?.code) {
+      out.push(line);
+      if (key && chain && !part?.code) {
+        const msg = `Catena di trasmissione ${transmissionInches(key)}: nella pagina Catena di Trasmissione non c'è questo passo.`;
+        if (!warnings.includes(msg)) warnings.push(msg);
+      }
+      continue;
+    }
+    line.code = part.code;
+    line.bomCode = part.code;
+    line.mapped = true;
+    line.descriptionEN = `Chain ${transmissionInches(key)}`;
+    out.push(line);
+    if (!part.linkCode) continue;
+    const count = /^(m|mt|mm)$/i.test((line.um ?? "").trim())
+      ? 1
+      : Math.max(1, line.installedQty || 1);
+    out.push(
+      toLine({
+        code: part.linkCode,
+        mapped: true,
+        description: part.linkDescription || part.linkCode,
+        installed: count,
+        um: "NR",
+        notes: "maglia di giunzione",
+      })
+    );
+  }
+  spares.splice(0, spares.length, ...out);
+}
+
 /**
  * Lo scraper della commessa finisce subito sotto la sua catena.
  * Stesso compound, oppure il codice catena nelle note; altrimenti la catena
@@ -912,6 +967,7 @@ export async function buildSparePartsOffer(
         bearingsByKey: new Map(),
         bearingsByBom: new Map(),
         bearingsBySellable: new Map(),
+        transmissionChains: new Map(),
       };
 
   const motorsByBase: Map<string, ProposalLine[]> = groupByJobBase(
@@ -981,6 +1037,7 @@ export async function buildSparePartsOffer(
     );
     const orderedSpares = placeScrapersUnderChain(spares);
     applyChainCodes(orderedSpares, chainRows, warnings, Boolean(chainDoc));
+    applyTransmissionChains(orderedSpares, catalog, warnings);
 
     const section: MachineSection = {
       itemCode: base,
@@ -1030,6 +1087,9 @@ export async function buildSparePartsOffer(
   };
 
   const refined = await refineOfferWithClaude(draft, indices);
-  for (const machine of refined.machines) keepChainAssemblySuffix(machine.spares);
+  for (const machine of refined.machines) {
+    keepChainAssemblySuffix(machine.spares);
+    applyTransmissionChains(machine.spares, catalog, machine.warnings);
+  }
   return refined;
 }
