@@ -175,7 +175,23 @@ function readBomTable(grid: Grid): { rows: BomRow[]; warnings: string[] } {
       material: cols.material >= 0 ? cellStr(row[cols.material]) || undefined : undefined,
     });
   }
+  nameMinimaxSprinklers(rows);
   return { rows, warnings };
+}
+
+/** «Sprinkler minimax» senza modello MXD è lo sprinkler MXD-STD-ELM-K40. */
+function nameMinimaxSprinklers(rows: BomRow[]): void {
+  for (const row of rows) {
+    const text = `${row.partNumber ?? ""} ${row.descriptionEN ?? ""} ${row.descriptionIT ?? ""}`;
+    if (!/minimax/i.test(text) || /MXD-/i.test(text)) continue;
+    const named = sprinklerOfferName(text);
+    if (!named) continue;
+    row.partNumber = named.code;
+    row.descriptionEN = named.description;
+    if (row.descriptionIT && /minimax/i.test(String(row.descriptionIT)) && !/MXD-/i.test(String(row.descriptionIT))) {
+      row.descriptionIT = undefined;
+    }
+  }
 }
 
 function isBlankType(v: string | undefined): boolean {
@@ -187,15 +203,18 @@ function isBlankType(v: string | undefined): boolean {
  * Ugello Minimax. In distinta il modello è MXD-SDT-ELM-K40 (TKK) oppure
  * MXD-STD-ELM-K40 (TK): in offerta è lo stesso codice, UGELLO-MXD-SDTELMK40.
  * La descrizione resta "Sprinkler" più il modello scritto in distinta.
+ * «Sprinkler minimax» senza modello è MXD-STD-ELM-K40.
  */
 export function sprinklerOfferName(raw: string): { code: string; description: string } | null {
-  const model = raw
-    .replace(/\s+/g, " ")
-    .trim()
+  const source = raw.replace(/\s+/g, " ").trim();
+  let model = source
     .replace(/^sprinklers?\s*[-–]?\s*/i, "")
     .replace(/\s*minimax\s*/gi, " ")
     .trim();
-  if (!model || !/[A-Za-z]/.test(model) || !/\d/.test(model)) return null;
+  if (!model || !/\d/.test(model)) {
+    if (!/minimax/i.test(source)) return null;
+    model = "MXD-STD-ELM-K40";
+  }
   let compact = model.toUpperCase();
   compact = compact.replace(/^MXD-STD-ELM-K40$/, "MXD-SDT-ELM-K40");
   const parts = compact.split(/[-\s]+/).filter(Boolean);

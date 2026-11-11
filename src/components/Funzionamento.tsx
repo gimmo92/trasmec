@@ -83,7 +83,9 @@ export default function Funzionamento() {
           <li>
             Sprinkler. Il codice è quello di vendita, per esempio
             UGELLO-MXD-SDTELMK40, e la descrizione resta Sprinkler più il modello
-            della distinta. I supporti e le piastre dello sprinkler non entrano.
+            della distinta. Se c&apos;è solo «Sprinkler minimax», senza modello,
+            è Sprinkler MXD-STD-ELM-K40. I supporti e le piastre dello sprinkler
+            non entrano.
           </li>
           <li>
             Porte explosion proof: solo i Bursting Panels. Il codice è PEX-EXGO-
