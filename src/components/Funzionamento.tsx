@@ -260,7 +260,8 @@ export default function Funzionamento() {
           <li>
             Nel margine verde, tutta a destra, c&apos;è WEAR PARTS ESTIMATED
             LIFETIME (HRS). Le ore arrivano dal file info dettagli spare parts,
-            in base alla categoria del componente.
+            in base alla categoria del componente. Un nuovo file info spare parts
+            caricato in archivio sostituisce quello precedente.
           </li>
         </ul>
       </section>

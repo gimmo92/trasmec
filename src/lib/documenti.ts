@@ -179,10 +179,11 @@ export async function saveDocumento(
     { name, full, size: stat.size, mtimeMs: stat.mtimeMs },
   ]);
   const meta = cachedKind(name, stat.size, stat.mtimeMs) ?? kindFromName(name);
-  if (meta.kind === "spare-part-list") {
+  if (meta.kind === "spare-part-list" || meta.kind === "info-spare-parts") {
+    const kind = meta.kind;
     const previous = collectFiles().filter((file) => {
       if (file.name === name) return false;
-      return cachedKind(file.name, file.size, file.mtimeMs)?.kind === "spare-part-list";
+      return cachedKind(file.name, file.size, file.mtimeMs)?.kind === kind;
     });
     for (const file of previous) await removeDocumentoFile(file.name);
     if (previous.length) await ensureClassificazioni(collectFiles());

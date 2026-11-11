@@ -110,7 +110,7 @@ export default function Archivio() {
           <h2>Archivio</h2>
           <p className="hint">
             {section === "generali"
-              ? "Spare part list, info spare parts e calcolo costo catene valgono per tutte le offerte. Un nuovo spare part list sostituisce quello già caricato."
+              ? "Spare part list, info spare parts e calcolo costo catene valgono per tutte le offerte. Un nuovo spare part list o info spare parts sostituisce quello già caricato."
               : "Carica offerte, distinte e liste motori/sensori. Ogni file resta collegato alle offerte che citano le sue commesse."}
           </p>
         </div>
