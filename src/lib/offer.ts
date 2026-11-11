@@ -568,7 +568,6 @@ function linesFromGroup(
       );
     } else if (brgs.length) {
       lines[0].highlightGroup = "cuscinetti";
-      lines[0].recommendedQty = null;
     }
     for (const b of brgs) {
       if (normKey(b.code) === normKey(lines[0].code)) continue;

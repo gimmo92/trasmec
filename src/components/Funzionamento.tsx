@@ -137,7 +137,8 @@ export default function Funzionamento() {
             gialli della scheda: cuscinetti, ralla, tenute. Il codice del supporto
             TM è l&apos;ultimo giallo della scheda, per esempio C003577-S, non
             SUP-TM100. Ingrassatore e bulloni, se non sono gialli, non entrano.
-            La scorta dell&apos;assieme resta vuota.
+            La scorta consigliata si compila anche sull&apos;assieme, per tutti i
+            supporti.
           </li>
           <li>
             I gruppi supporto si colorano a turno con #E5FFFF e #FFEFFF. Gli altri
@@ -156,7 +157,7 @@ export default function Funzionamento() {
           <li>La quantità installata arriva dalla distinta.</li>
           <li>
             La scorta consigliata è il 10% dell&apos;installato, arrotondata per
-            eccesso, minimo 1. Sull&apos;assieme del supporto resta vuota.
+            eccesso, minimo 1. Vale anche per l&apos;assieme di ogni supporto.
           </li>
           <li>
             Per la catena in metri o millimetri, se il disegno della commessa ha
