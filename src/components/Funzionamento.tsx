@@ -114,8 +114,11 @@ export default function Funzionamento() {
             il listino, dalle celle gialle della scheda di quel modello.
           </li>
           <li>
-            Se il modello della catena è solo la parola CHAIN, si tiene il testo
-            della scheda, per esempio «Chain - L=-».
+            La catena entra sempre se la macchina è TC, TK o TKK. Su tutte le
+            altre entra solo se in distinta c&apos;è la lunghezza, in metri nella
+            sezione catena oppure come L= sulla riga. Senza lunghezza, per
+            esempio «Chain - L=-», la catena non si mette. Il giunto a catena
+            non è questa catena.
           </li>
           <li>Motori MR e sensori SE della scheda non sono ricambi di distinta: stanno nelle liste ML e SL.</li>
         </ul>

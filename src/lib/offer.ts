@@ -181,7 +181,7 @@ function buildOfferDescription(
   const model = family || "";
   if (tpl) {
     if (/\{(modello|resto|model)\}/i.test(tpl)) {
-      // "Chain CHAIN" non dice nulla: tieni il testo della scheda (es. "Chain - L=-").
+      // "Chain CHAIN" non dice nulla: tieni il testo della scheda, per esempio Chain 2-1/2"D L=3,4925.
       if (!model || /^(CHAIN|TRASPORT|CONVEYING|CATENA)$/i.test(model)) return fallback;
       return tpl
         .replace(/\{(modello|resto|model)\}/gi, model)

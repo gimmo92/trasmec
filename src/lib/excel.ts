@@ -727,6 +727,123 @@ function extractHeader(grids: Record<string, Grid>, bomIndexD4?: string): BomHea
   return header;
 }
 
+/** TC, TK e TKK: la catena resta in offerta anche senza metri scritti in distinta. */
+function isChainConveyor(header: BomHeader, grids: Record<string, Grid>): boolean {
+  const bits: string[] = [
+    header.conveyorCategory,
+    header.plateType,
+    header.sizeType,
+    header.machineCode,
+    header.description,
+  ].filter((s): s is string => Boolean(s));
+  const config = grids["1"];
+  if (config) {
+    for (let r = 0; r < Math.min(config.length, 8); r++) {
+      const label = (config[r] ?? []).slice(0, 6).map((c) => cellStr(c)).filter(Boolean).join(" ");
+      if (label) bits.push(label);
+    }
+  }
+  return /(?:^|[^A-Z0-9])(?:TKK|TC|TK)(?![A-Z])/i.test(bits.join(" "));
+}
+
+/** Catena di trasporto o trasmissione. Giunto, guida e supporto non lo sono. */
+function isTransportChainRow(row: BomRow): boolean {
+  const pn = (row.partNumber ?? "").trim();
+  const en = (row.descriptionEN ?? "").trim();
+  const it = (row.descriptionIT ?? "").trim();
+  const text = `${pn} ${en} ${it}`;
+  if (
+    /coupling|giunto|coprigiunto|coverjoint|support|sostegn|guida|\bguide\b|holder|scraper|\bpala\b|carter/i.test(
+      text
+    )
+  ) {
+    return false;
+  }
+  if (/^CHAIN$/i.test(pn)) return true;
+  if (/^chain\b/i.test(en) || /^catena\b/i.test(en) || /^catena\b/i.test(it)) return true;
+  return /\b(trasport|conveying|transmission)\b/i.test(text) && /\b(chain|catena)\b/i.test(text);
+}
+
+/** L=3,4925 oppure una misura in m/mt/mm. L=- non è una lunghezza. */
+function textHasChainLength(text: string): boolean {
+  for (const m of text.matchAll(/L\s*=\s*([0-9]+(?:[.,][0-9]+)?)/gi)) {
+    const n = Number(m[1].replace(",", "."));
+    if (n > 0) return true;
+  }
+  for (const m of text.matchAll(/([0-9]+(?:[.,][0-9]+)?)\s*(mm|mt|m)\b/gi)) {
+    const n = Number(m[1].replace(",", "."));
+    const unit = m[2].toLowerCase();
+    if (!n || n <= 0) continue;
+    if (unit === "mm" && n < 100) continue;
+    return true;
+  }
+  return false;
+}
+
+/** Metri della sezione Chain in distinta (L (m) installata o di scorta). */
+function distintaChainMeters(grids: Record<string, Grid>): number {
+  let best = 0;
+  for (const grid of Object.values(grids)) {
+    for (let r = 0; r < grid.length; r++) {
+      const lCols: number[] = [];
+      (grid[r] ?? []).forEach((cell, i) => {
+        const label = norm(cell);
+        if (label === "l (m)" || label === "l(m)") lCols.push(i);
+      });
+      if (!lCols.length) continue;
+      for (let h = r + 1; h < Math.min(grid.length, r + 8); h++) {
+        const data = grid[h] ?? [];
+        const name = cellStr(data[1]) || cellStr(data[0]);
+        if (!name) continue;
+        if (!/^chain$/i.test(name)) break;
+        for (const col of lCols) {
+          const n = parseNum(data[col]);
+          if (n && n > 0) best = Math.max(best, n);
+        }
+      }
+    }
+  }
+  return best;
+}
+
+function rowHasChainLength(row: BomRow, distintaMeters: number): boolean {
+  if (distintaMeters > 0) return true;
+  const text = `${row.descriptionEN ?? ""} ${row.descriptionIT ?? ""}`;
+  if (textHasChainLength(text)) return true;
+  if (/L\s*=\s*(?:-|–)?(?!\d)/i.test(text)) return false;
+  const qty = parseNum(row.qty);
+  const um = String(row.um ?? "").trim();
+  if (/^(m|mt|mm)$/i.test(um) && qty && qty > 0) return true;
+  return textHasChainLength(String(row.qty ?? ""));
+}
+
+/**
+ * Fuori da TC, TK e TKK la catena entra solo se la distinta ha la lunghezza.
+ * Senza metri, «Chain - L=-» non diventa una riga di offerta.
+ */
+function withoutChainsMissingLength(
+  rows: BomRow[],
+  header: BomHeader,
+  grids: Record<string, Grid>,
+  warnings: string[]
+): BomRow[] {
+  if (isChainConveyor(header, grids)) return rows;
+  const meters = distintaChainMeters(grids);
+  let dropped = false;
+  const kept = rows.filter((row) => {
+    if (!row.partNumber) return true;
+    if (!isTransportChainRow(row) || rowHasChainLength(row, meters)) return true;
+    dropped = true;
+    return false;
+  });
+  if (dropped) {
+    warnings.push(
+      "Catena non inserita: la macchina non è TC, TK o TKK e in distinta non c'è la lunghezza."
+    );
+  }
+  return kept;
+}
+
 /** Parsa un file di distinta base in una struttura normalizzata. */
 export function parseBom(filePath: string, relPath: string): ParsedBom {
   const { grids, bomIndexD4 } = readWorkbook(filePath);
@@ -762,6 +879,7 @@ export function parseBom(filePath: string, relPath: string): ParsedBom {
   }
 
   const header = extractHeader(grids, bomIndexD4);
+  bom = withoutChainsMissingLength(bom, header, grids, warnings);
 
   return {
     file: filePath.split(/[\\/]/).pop() ?? filePath,
@@ -822,11 +940,12 @@ export function parseBomForOffer(
       : "unknown";
   const { rows, warnings } = extractAllBomRows(grids);
   if (format === "unknown") appendBearingHints(grids, rows);
+  const bom = withoutChainsMissingLength(rows, header, grids, warnings);
   return {
     file: filePath.split(/[\\/]/).pop() ?? filePath,
     format,
     header,
-    bom: rows,
+    bom,
     warnings,
   };
 }
