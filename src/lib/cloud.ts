@@ -99,6 +99,14 @@ export async function signedUploadUrl(objectPath: string): Promise<string> {
   return data.signedUrl;
 }
 
+export async function removeStorageFile(objectPath: string): Promise<void> {
+  const sb = supabaseAdmin();
+  const { error } = await sb.storage.from(CLOUD_BUCKET).remove([objectPath]);
+  if (error && !/not found|does not exist/i.test(error.message)) {
+    throw new Error(`Rimozione ${objectPath}: ${error.message}`);
+  }
+}
+
 export async function downloadFile(objectPath: string): Promise<Buffer | null> {
   const sb = supabaseAdmin();
   const { data, error } = await sb.storage.from(CLOUD_BUCKET).download(objectPath);

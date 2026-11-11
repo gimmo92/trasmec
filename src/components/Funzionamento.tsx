@@ -130,7 +130,8 @@ export default function Funzionamento() {
           <li>
             Se sull&apos;indice Spare parts list è SI, il codice mostrato è quello
             vendibile del listino. Se non c&apos;è, resta il codice della distinta
-            e compare un avviso.
+            e compare un avviso. Un nuovo spare part list caricato in archivio
+            sostituisce quello precedente.
           </li>
           <li>
             Gestione Composto: le righe dello stesso modello si accorpano, per

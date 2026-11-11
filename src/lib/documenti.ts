@@ -4,6 +4,7 @@ import {
   cloudTmpDir,
   downloadFile,
   listStorage,
+  removeStorageFile,
   uploadFile,
   useCloud,
 } from "./cloud";
@@ -178,7 +179,27 @@ export async function saveDocumento(
     { name, full, size: stat.size, mtimeMs: stat.mtimeMs },
   ]);
   const meta = cachedKind(name, stat.size, stat.mtimeMs) ?? kindFromName(name);
+  if (meta.kind === "spare-part-list") {
+    const previous = collectFiles().filter((file) => {
+      if (file.name === name) return false;
+      return cachedKind(file.name, file.size, file.mtimeMs)?.kind === "spare-part-list";
+    });
+    for (const file of previous) await removeDocumentoFile(file.name);
+    if (previous.length) await ensureClassificazioni(collectFiles());
+  }
   return toDocumento({ name, size: stat.size, mtimeMs: stat.mtimeMs }, meta);
+}
+
+/** Toglie un file da disco e dallo storage. Il nome è solo il file, senza cartelle. */
+async function removeDocumentoFile(name: string): Promise<void> {
+  const base = path.basename(name);
+  if (!base || base !== name.replace(/\\/g, "/")) throw new Error("Percorso non valido");
+  if (useCloud()) await removeStorageFile(`documenti/${base}`);
+  for (const dir of [localDocumentiDir(), dirOverride]) {
+    if (!dir) continue;
+    const full = path.join(dir, base);
+    if (fs.existsSync(full)) fs.unlinkSync(full);
+  }
 }
 
 const CONTENT_TYPE: Record<string, string> = {
