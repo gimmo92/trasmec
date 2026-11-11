@@ -129,7 +129,7 @@ function parseSensorExcel(filePath: string): MsRow[] {
       jobNr: job,
       jobBase: jobBase(job),
       line: {
-        code: item || model || "SENSORE",
+        code: item,
         descriptionEN: desc || undefined,
         descriptionIT: desc || undefined,
         installedQty: installed,

@@ -194,8 +194,9 @@ export default function Funzionamento() {
           <li>Stanno in due sezioni proprie, non dentro i ricambi di distinta.</li>
           <li>Motori: dalla lista ML collegata all&apos;offerta, solo i codici che iniziano con MR.</li>
           <li>
-            Sensori: tutte le righe della lista SL. Se il codice non inizia con SE,
-            la riga resta in offerta ed è evidenziata in giallo.
+            Sensori: tutte le righe della lista SL. Il codice è l&apos;item number:
+            se è vuoto, il codice in offerta resta vuoto. Se il codice c&apos;è e
+            non inizia con SE, la riga resta in offerta ed è evidenziata in giallo.
           </li>
         </ul>
       </section>

@@ -40,5 +40,6 @@ export function isStandardSensorCode(code: string | undefined): boolean {
 export function isNonSeSensorLine(
   line: Pick<ProposalLine, "category" | "code">
 ): boolean {
-  return line.category === "sensor" && !isStandardSensorCode(line.code);
+  const code = (line.code ?? "").trim();
+  return line.category === "sensor" && code.length > 0 && !isStandardSensorCode(code);
 }
