@@ -86,9 +86,10 @@ export default function Funzionamento() {
             della distinta. I supporti e le piastre dello sprinkler non entrano.
           </li>
           <li>
-            Porte explosion proof: solo i Bursting Panels. Telaio e cover restano
-            fuori. La descrizione contiene PORTELL, così l&apos;indice della porta
-            la riconosce.
+            Porte explosion proof: solo i Bursting Panels. Il codice è PEX-EXGO-
+            più la misura della distinta, per esempio PEX-EXGO-620X820 o
+            PEX-EXGO-300X620. Telaio e cover restano fuori. La descrizione
+            contiene PORTELL, così l&apos;indice della porta la riconosce.
           </li>
           <li>
             Scraper CT0003 solo sulla catena doppia (codice distinta CT). Sulla

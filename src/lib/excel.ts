@@ -206,17 +206,27 @@ export function sprinklerOfferName(raw: string): { code: string; description: st
   return { code, description: `Sprinkler ${model.toUpperCase()}` };
 }
 
+/** 620x820, 300 x 620 o 620×820 → 620X820. I bulloni (M10x25) non sono una misura di portella. */
+function doorMeasure(raw: string): string {
+  const found = raw.toUpperCase().match(/(\d+)\s*[X×]\s*(\d+)/);
+  if (!found) return "";
+  if (Number(found[1]) < 100 || Number(found[2]) < 100) return "";
+  return `${found[1]}X${found[2]}`;
+}
+
 function pushExplosionDoor(
   push: (row: BomRow) => void,
   code: string,
   size: string,
   qty: number | undefined
 ) {
-  if (!qty || qty <= 0 || isBlankType(code)) return;
-  const measure = !isBlankType(size) && size !== code ? ` ${size}` : "";
+  if (!qty || qty <= 0) return;
+  const measure = doorMeasure(size) || doorMeasure(code);
+  if (!measure && isBlankType(code)) return;
+  const shown = measure || (!isBlankType(size) && size !== code ? size : "");
   push({
-    partNumber: code,
-    descriptionEN: `Explosion proof door PORTELL${measure}`.replace(/\s+/g, " ").trim(),
+    partNumber: measure ? `PEX-EXGO-${measure}` : code,
+    descriptionEN: `Explosion proof door PORTELL${shown ? ` ${shown}` : ""}`.replace(/\s+/g, " ").trim(),
     qty,
     um: "NR",
   });
@@ -251,7 +261,14 @@ function addBurstingDoors(grid: Grid, push: (row: BomRow) => void) {
     if (label === "qty" && /size/i.test(cellStr(row[2]))) {
       const data = grid[r + 1] ?? [];
       pushExplosionDoor(push, cellStr(data[3]), cellStr(data[2]), parseNum(data[1]));
-      pushExplosionDoor(push, cellStr(data[6]) || cellStr(data[5]), "", parseNum(data[4]));
+      const rightItem = cellStr(data[6]);
+      const rightMid = cellStr(data[5]);
+      pushExplosionDoor(
+        push,
+        !isBlankType(rightItem) ? rightItem : rightMid,
+        !isBlankType(rightItem) ? rightMid : "",
+        parseNum(data[4])
+      );
       kind = "";
       r += 1;
       continue;
@@ -914,6 +931,13 @@ export function extractSchedaBom(grids: Record<string, Grid>): {
       else if (supportModel) partNumber = supportModel[1].replace(/\s+/g, " ").trim();
       else if (/^chain\b/i.test(description)) partNumber = "CHAIN";
       else partNumber = description.split(/\s+/).slice(0, 3).join(" ");
+    }
+    if (/explosion|portell/i.test(`${description} ${partNumber}`)) {
+      const measure = doorMeasure(`${description} ${partNumber}`);
+      if (measure) {
+        partNumber = `PEX-EXGO-${measure}`;
+        description = `Explosion proof door PORTELL ${measure}`;
+      }
     }
     const umRaw = umCol >= 0 ? cellStr(row[umCol]) : "";
     const detailParts: string[] = [];

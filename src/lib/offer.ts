@@ -515,8 +515,8 @@ function linesFromGroup(
   let bomCode: string | undefined;
   let mapped: boolean | undefined;
 
-  // L'ugello ha già il codice vendita (UGELLO-MXD-SDTELMK40): il listino non lo contiene.
-  if (/^UGELLO-/i.test(code)) {
+  // Ugello e portella hanno già il codice vendita: il listino non li contiene.
+  if (/^(UGELLO-|PEX-EXGO-)/i.test(code)) {
     mapped = true;
   } else if (useList) {
     const resolved = resolveSellable(
