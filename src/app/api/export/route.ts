@@ -92,7 +92,7 @@ async function buildOfferWorkbook(offer: Offer): Promise<ExcelJS.Buffer> {
   const setValue = (addr: string, value: string) => {
     ws.getCell(addr).value = value;
   };
-  setValue("O3", offer.header.orderDate || "");
+  setValue("O3", "");
   setValue("O4", offer.header.orderNumber || "");
   setValue("H7", offer.header.customer || "");
   setValue("N7", offer.header.orderNumber || "");
