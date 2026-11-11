@@ -221,6 +221,8 @@ function parentBomCode(code: string): string | undefined {
 
 function preferAssemblyCode(candidates: string[]): string | undefined {
   if (!candidates.length) return undefined;
+  const tmKit = candidates.find((c) => /^C\d+-S$/i.test(c));
+  if (tmKit) return tmKit;
   const tkBolts = candidates.find(
     (c) => /^(TKK-SUP-|TK-SUP-)/i.test(c) && /[-.]S$/i.test(c)
   );

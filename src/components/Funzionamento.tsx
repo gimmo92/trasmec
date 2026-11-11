@@ -134,9 +134,10 @@ export default function Funzionamento() {
           </li>
           <li>
             Con «gruppo cuscinetti», sotto l&apos;assieme si elencano i componenti
-            gialli della scheda: cuscinetti, ralla, tenute. Ingrassatore e
-            bulloni, se non sono gialli, non entrano. La scorta dell&apos;assieme
-            resta vuota.
+            gialli della scheda: cuscinetti, ralla, tenute. Il codice del supporto
+            TM è l&apos;ultimo giallo della scheda, per esempio C003577-S, non
+            SUP-TM100. Ingrassatore e bulloni, se non sono gialli, non entrano.
+            La scorta dell&apos;assieme resta vuota.
           </li>
           <li>
             I gruppi supporto si colorano a turno con #E5FFFF e #FFEFFF. Gli altri

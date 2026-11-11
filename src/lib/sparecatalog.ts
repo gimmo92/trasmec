@@ -14,9 +14,9 @@ interface AssemblyInfo {
 }
 
 export interface SpareCatalog {
-  /** TM100CLC → SUP-TM100-CLC */
+  /** TM100CLC → C003577-S, ultimo codice giallo della scheda. */
   assemblyByKey: Map<string, AssemblyInfo>;
-  /** C003577-A → SUP-TM100-CLC */
+  /** C003577-A → C003577-S */
   assemblyByBom: Map<string, AssemblyInfo>;
   /** TM100CLC → cuscinetti gialli della scheda */
   bearingsByKey: Map<string, CatalogBearing[]>;
@@ -295,6 +295,7 @@ async function buildCatalog(filePath: string): Promise<SpareCatalog> {
     const sheetBoms: string[] = [];
     let assembly: AssemblyInfo | undefined;
     let assemblyWithBolts: AssemblyInfo | undefined;
+    let lastYellow: AssemblyInfo | undefined;
 
     for (let r = headerRow + 1; r <= maxRow; r++) {
       const row = ws.getRow(r);
@@ -313,6 +314,9 @@ async function buildCatalog(filePath: string): Promise<SpareCatalog> {
         } else if (!assembly) {
           assembly = info;
         }
+      }
+      if (codice && looksLikeCode(codice) && yellow) {
+        lastYellow = { code: codice, description: oggetto || codice };
       }
       if (codice && yellow && isYellowGroupPart(codice)) {
         sheetBearings.push({ code: codice, description: oggetto || codice, qty });
@@ -340,9 +344,12 @@ async function buildCatalog(filePath: string): Promise<SpareCatalog> {
 
     const sheetKey = normKey(ws.name);
     const isTkSupport = /^SUPPORTOTK/.test(sheetKey);
-    const picked = isTkSupport
-      ? assemblyWithBolts || assembly
-      : assembly || assemblyWithBolts;
+    const isTmSupport = /^TM\d/.test(sheetKey);
+    const picked = isTmSupport && lastYellow
+      ? lastYellow
+      : isTkSupport
+        ? assemblyWithBolts || assembly
+        : assembly || assemblyWithBolts;
     const aliasKeys = supportAliases(ws.name);
 
     if (picked) {
