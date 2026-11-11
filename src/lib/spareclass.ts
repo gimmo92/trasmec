@@ -22,7 +22,6 @@ function row(
 /**
  * Tre colonne in coda al componente, in base al tipo descritto nel file:
  * delivery days, *** / ** / *, wear (W) o spare (S).
- * Sprinkler e portelle non hanno valori nel file: restano vuoti.
  * La pala ha solo ***.
  */
 export function classifyComponent(
@@ -69,6 +68,12 @@ export function classifyComponent(
   if (/\b(crown|corona)\b/i.test(text)) return row(30, "*", "S");
   if (/scraper|\bpala\b|\bpaddle\b|\bscrew\b/i.test(text) || /^CT0003$/i.test(codeU)) {
     return row(null, "***", "");
+  }
+  if (/sprinkler|spruzzat|minimax/i.test(text) || /^UGELLO-/i.test(codeU)) {
+    return row(20, "**", "S");
+  }
+  if (/explosion|portell|anti\s*esplos/i.test(text) || /^PEX-EXGO-/i.test(codeU)) {
+    return row(20, "**", "S");
   }
 
   const child = /^cuscinetti\b/i.test(line.notes || "");

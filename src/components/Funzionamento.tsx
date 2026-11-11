@@ -237,7 +237,8 @@ export default function Funzionamento() {
             <tr><td>Motoriduttore</td><td>60</td><td>***</td><td>S</td></tr>
             <tr><td>Sensore</td><td>10</td><td>***</td><td>S</td></tr>
             <tr><td>Sensore Vega o Vib</td><td>30</td><td>***</td><td>S</td></tr>
-            <tr><td>Sprinkler, porta explosion proof</td><td></td><td></td><td></td></tr>
+            <tr><td>Sprinkler</td><td>20</td><td>**</td><td>S</td></tr>
+            <tr><td>Porta explosion proof</td><td>20</td><td>**</td><td>S</td></tr>
           </tbody>
         </table>
       </section>
