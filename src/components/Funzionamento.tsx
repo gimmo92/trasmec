@@ -104,7 +104,9 @@ export default function Funzionamento() {
         <ul>
           <li>
             Dal foglio SPARE PARTS entrano giunto, catena e supporto completo,
-            se il flag è S e la quantità è maggiore di zero.
+            se il flag è S e la quantità è maggiore di zero. Il giunto a catena
+            usa l&apos;inizio del drawing number e il passo della distinta, per
+            esempio IV003871-1-1/2.
           </li>
           <li>
             Il supporto TM resta una riga. Cuscinetti, ralla e tenute li aggiunge

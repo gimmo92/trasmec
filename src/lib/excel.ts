@@ -859,6 +859,49 @@ function sectionCode(grid: Grid | undefined, title: RegExp): string {
   return "";
 }
 
+/** 1-1/2"D, 1"1/2 o 2" → 1-1/2, 1-1/2, 2. Il semplice/doppio non entra nel codice. */
+function couplingPitchToken(raw: string): string {
+  let s = raw
+    .toUpperCase()
+    .trim()
+    .replace(/(\d)\s+(?=\d)/g, "$1-")
+    .replace(/\s+/g, "");
+  s = s.replace(/["″'][DS]?$/, "");
+  s = s.replace(/["″']/g, "-");
+  if (/[/-]/.test(s)) s = s.replace(/[DS]$/, "");
+  s = s.replace(/-+/g, "-").replace(/^-|-$/g, "");
+  return /^\d+(?:-\d+\/\d+)?$/.test(s) ? s : "";
+}
+
+/** IV003871.1-B → IV003871, poi il passo: IV003871-1-1/2. */
+function chainCouplingSellCode(grid: Grid | undefined): string {
+  if (!grid) return "";
+  for (let r = 0; r < grid.length; r++) {
+    const label = cellStr(grid[r]?.[1]);
+    if (!/chain coupling|giunto a catena/i.test(label)) continue;
+    for (let h = r + 1; h < Math.min(grid.length, r + 4); h++) {
+      const header = grid[h] ?? [];
+      const drawCol = header.findIndex((c) => /drawing/.test(norm(c)));
+      if (drawCol < 0) continue;
+      const data = grid[h + 1] ?? [];
+      const stem = cellStr(data[drawCol]).toUpperCase().match(/^[A-Z]+\d+/)?.[0] ?? "";
+      if (!stem) continue;
+      const pitchCol = header.findIndex((c) => norm(c) === "pitch" || norm(c) === "passo");
+      const pitch = pitchCol >= 0 ? couplingPitchToken(cellStr(data[pitchCol])) : "";
+      return pitch ? `${stem}-${pitch}` : stem;
+    }
+  }
+  return "";
+}
+
+/** Se la distinta ha solo il disegno, il passo può stare nel testo "1-1/2". */
+function composeCouplingCode(code: string, description: string): string {
+  const quoted = description.toUpperCase().match(/(\d+(?:\s*-\s*\d+\s*\/\s*\d+)?)\s*["″']/);
+  const pitch = quoted ? couplingPitchToken(quoted[1]) : "";
+  if (code && pitch && /^[A-Z]+\d+$/i.test(code)) return `${code}-${pitch}`;
+  return code;
+}
+
 /**
  * Coclea (foglio SPARE PARTS): le righe con flag S e quantità > 0 sono i ricambi.
  * Il supporto TM resta un'unica riga: cuscinetti e tenute li aggiunge il listino.
@@ -889,7 +932,7 @@ export function extractSchedaBom(grids: Record<string, Grid>): {
   if (flagCol < 0 || qtyCol < 0) return null;
 
   const distinta = grids["Distinta EN"] ?? grids["Distinta"];
-  const couplingCode = sectionCode(distinta, /chain coupling|giunto a catena/i);
+  const couplingCode = chainCouplingSellCode(distinta);
   const driveCode = sectionCode(distinta, /^drive supports$/i);
 
   const rows: BomRow[] = [];
@@ -926,11 +969,18 @@ export function extractSchedaBom(grids: Record<string, Grid>): {
     let partNumber = namedSprinkler?.code || (codeCol >= 0 ? cellStr(row[codeCol]) : "");
     if (isBlankType(partNumber)) {
       const supportModel = description.match(/\b((?:SNL|SNH|FNL|UKT)\s*\d+\s*[A-Z]*)\b/i);
-      if (/chain\s*coupling|giunto/i.test(description)) partNumber = couplingCode || "GIUNTO";
+      if (/chain\s*coupling|giunto/i.test(description) && !/coverjoint|coprigiunto/i.test(description)) {
+        partNumber = couplingCode || "GIUNTO";
+      }
       else if (/\bTM\d/i.test(description)) partNumber = driveCode || "TM";
       else if (supportModel) partNumber = supportModel[1].replace(/\s+/g, " ").trim();
       else if (/^chain\b/i.test(description)) partNumber = "CHAIN";
       else partNumber = description.split(/\s+/).slice(0, 3).join(" ");
+    }
+    if (/chain\s*coupling|giunto/i.test(description) && !/coverjoint|coprigiunto/i.test(description)) {
+      const built = composeCouplingCode(couplingCode, description);
+      if (built) partNumber = built;
+      else if (isBlankType(partNumber)) partNumber = "GIUNTO";
     }
     if (/explosion|portell/i.test(`${description} ${partNumber}`)) {
       const measure = doorMeasure(`${description} ${partNumber}`);
