@@ -94,7 +94,7 @@ export default function SigleSpareParts() {
     <div className="indici-page">
       <div className="indici-toolbar">
         <div>
-          <h2>Sigle parti di ricambio</h2>
+          <h2>Indici</h2>
           <p className="indici-hint">
             Filtro 1: in distinta restano solo i part number che iniziano con
             una di queste sigle. Le modifiche si salvano automaticamente e

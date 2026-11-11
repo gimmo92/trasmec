@@ -191,7 +191,7 @@ export default function IndiciRicambi() {
     <div className="indici-page">
       <div className="indici-toolbar">
         <div>
-          <h2>Indici dei ricambi</h2>
+          <h2>Regole</h2>
           <p className="indici-hint">
             Mapping indice → descrizione in offerta. Le modifiche si salvano
             automaticamente.

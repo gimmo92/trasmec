@@ -898,7 +898,7 @@ export async function buildSparePartsOffer(
 
   const indices = listIndici().filter((r) => r.indice.trim());
   if (!indices.length) {
-    throw new Error("Tabella Indici dei ricambi vuota: aggiungi almeno un indice.");
+    throw new Error("Tabella Regole vuota: aggiungi almeno un indice.");
   }
 
   const spareMap: SpareCodeMap = splDoc

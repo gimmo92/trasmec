@@ -49,11 +49,11 @@ export default function Funzionamento() {
         <ul>
           <li>
             <strong>Sigle.</strong> Il part number deve iniziare con una sigla
-            della tab Sigle spare parts. SC1004 passa se esiste la sigla SC.
+            della tab Indici. SC1004 passa se esiste la sigla SC.
           </li>
           <li>
             <strong>Indici.</strong> La descrizione deve contenere un token della
-            tab Indici dei ricambi, oppure il part number è uguale all&apos;indice
+            tab Regole, oppure il part number è uguale all&apos;indice
             (es. SC0059). Vince il token più specifico. Un indice vuoto non
             aggancia niente: il pezzo non entra.
           </li>

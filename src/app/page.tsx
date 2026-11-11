@@ -61,7 +61,7 @@ export default function Home() {
             className={tab === "indici" ? "tab on" : "tab"}
             onClick={() => setTab("indici")}
           >
-            Indici dei ricambi
+            Regole
           </button>
           <button
             role="tab"
@@ -69,7 +69,7 @@ export default function Home() {
             className={tab === "sigle" ? "tab on" : "tab"}
             onClick={() => setTab("sigle")}
           >
-            Sigle spare parts
+            Indici
           </button>
           <button
             role="tab"
