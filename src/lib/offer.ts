@@ -100,6 +100,11 @@ function familyToken(desc: string, token: string): string {
   if (chainType && /chain|trasport|convey/i.test(`${token} ${desc}`)) {
     return `${chainType[1]}${chainType[2]}`.toUpperCase();
   }
+  // "TM 75 2RP" resta TM75 2RP: il 2RP è l'esecuzione in distinta, non va perso.
+  if (/^TM$/i.test(token)) {
+    const exec = desc.match(/\bTM\s*(\d+)\s+(\d[A-Z0-9]*(?:\s+[A-Z0-9]+)*)/i);
+    if (exec) return `TM${exec[1]} ${exec[2].toUpperCase()}`;
+  }
   // "SNL 520" / "Block SNL 520" → SNL520 (il numero è staccato in distinta)
   const re = new RegExp(
     `(?:^|[^A-Za-z0-9])(${escapeRe(token)}[A-Za-z0-9\\-]*)(?:\\s+(\\d+))?`,

@@ -831,11 +831,14 @@ export function parseBomForOffer(
   };
 }
 
-/** "TM 100 CLC" → "TM100CLC", così l'indice TM aggancia la scheda listino giusta. */
+/** "TM 100 CLC" → "TM100CLC". "TM 75 2RP" → "TM75 2RP": il 2RP resta in descrizione. */
 function compactTm(desc: string): string {
   return desc.replace(
-    /\bTM\s+(\d+(?:\s+[A-Z]{1,4})+)\b/gi,
-    (_, rest: string) => `TM${String(rest).replace(/\s+/g, "")}`
+    /\bTM\s+(\d+(?:\s+[A-Z]{1,4})*)(?:\s+(\d[A-Z0-9]*(?:\s+[A-Z0-9]+)*))?/gi,
+    (_, head: string, exec?: string) => {
+      const base = `TM${String(head).replace(/\s+/g, "")}`;
+      return exec ? `${base} ${exec.toUpperCase()}` : base;
+    }
   );
 }
 
