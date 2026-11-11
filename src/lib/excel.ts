@@ -183,6 +183,29 @@ function isBlankType(v: string | undefined): boolean {
   return !s || s === "-" || s === "–";
 }
 
+/**
+ * Ugello Minimax. In distinta il modello è MXD-SDT-ELM-K40 (TKK) oppure
+ * MXD-STD-ELM-K40 (TK): in offerta è lo stesso codice, UGELLO-MXD-SDTELMK40.
+ * La descrizione resta "Sprinkler" più il modello scritto in distinta.
+ */
+export function sprinklerOfferName(raw: string): { code: string; description: string } | null {
+  const model = raw
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^sprinklers?\s*[-–]?\s*/i, "")
+    .replace(/\s*minimax\s*/gi, " ")
+    .trim();
+  if (!model || !/[A-Za-z]/.test(model) || !/\d/.test(model)) return null;
+  let compact = model.toUpperCase();
+  compact = compact.replace(/^MXD-STD-ELM-K40$/, "MXD-SDT-ELM-K40");
+  const parts = compact.split(/[-\s]+/).filter(Boolean);
+  const code =
+    parts.length <= 1
+      ? `UGELLO-${parts[0] || compact}`
+      : `UGELLO-${parts[0]}-${parts.slice(1).join("")}`;
+  return { code, description: `Sprinkler ${model.toUpperCase()}` };
+}
+
 function pushExplosionDoor(
   push: (row: BomRow) => void,
   code: string,
@@ -347,9 +370,10 @@ export function extractConfigBom(grids: Record<string, Grid>): {
       const qty = parseNum(row[1]);
       const type = cellStr(row[2]);
       if (qty && qty > 0 && !isBlankType(type) && !/^tot/i.test(type)) {
+        const named = sprinklerOfferName(type);
         push({
-          partNumber: type,
-          descriptionEN: `Sprinkler ${type}`,
+          partNumber: named?.code || type,
+          descriptionEN: named?.description || `Sprinkler ${type}`,
           qty,
           um: "NR",
         });
@@ -872,12 +896,17 @@ export function extractSchedaBom(grids: Record<string, Grid>): {
     }
     if (!description) continue;
     const kind = kindCol >= 0 ? cellStr(row[kindCol]).toUpperCase() : "";
-    if (kind === "SPR" || /minimax|sprinkler/i.test(description)) {
-      if (!/sprinkler/i.test(description)) description = `Sprinkler ${description}`;
-    }
     description = compactTm(description.replace(/\s+/g, " ").trim());
+    const namedSprinkler =
+      kind === "SPR" || /minimax|sprinkler/i.test(description)
+        ? sprinklerOfferName(description)
+        : null;
+    if (namedSprinkler) description = namedSprinkler.description;
+    else if ((kind === "SPR" || /minimax|sprinkler/i.test(description)) && !/sprinkler/i.test(description)) {
+      description = `Sprinkler ${description}`;
+    }
 
-    let partNumber = codeCol >= 0 ? cellStr(row[codeCol]) : "";
+    let partNumber = namedSprinkler?.code || (codeCol >= 0 ? cellStr(row[codeCol]) : "");
     if (isBlankType(partNumber)) {
       const supportModel = description.match(/\b((?:SNL|SNH|FNL|UKT)\s*\d+\s*[A-Z]*)\b/i);
       if (/chain\s*coupling|giunto/i.test(description)) partNumber = couplingCode || "GIUNTO";

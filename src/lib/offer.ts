@@ -515,7 +515,10 @@ function linesFromGroup(
   let bomCode: string | undefined;
   let mapped: boolean | undefined;
 
-  if (useList) {
+  // L'ugello ha già il codice vendita (UGELLO-MXD-SDTELMK40): il listino non lo contiene.
+  if (/^UGELLO-/i.test(code)) {
+    mapped = true;
+  } else if (useList) {
     const resolved = resolveSellable(
       pns,
       family,

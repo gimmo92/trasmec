@@ -80,7 +80,11 @@ export default function Funzionamento() {
             SETTORE-Z10-P142-V. Le quantità delle due teste si sommano se i
             denti sono gli stessi.
           </li>
-          <li>Sprinkler. I supporti e le piastre dello sprinkler non entrano.</li>
+          <li>
+            Sprinkler. Il codice è quello di vendita, per esempio
+            UGELLO-MXD-SDTELMK40, e la descrizione resta Sprinkler più il modello
+            della distinta. I supporti e le piastre dello sprinkler non entrano.
+          </li>
           <li>
             Porte explosion proof: solo i Bursting Panels. Telaio e cover restano
             fuori. La descrizione contiene PORTELL, così l&apos;indice della porta
