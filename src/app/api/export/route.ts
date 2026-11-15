@@ -8,6 +8,7 @@ import { readWearLifetimes, wearLifetimeHours, wearLifetimeTable, type WearLifet
 import { prepareApp } from "@/lib/prepare";
 import { classifyComponent } from "@/lib/spareclass";
 import { machineLabel, offerUnit, projectLabel } from "@/lib/machinelabel";
+import { applyPriceToLine } from "@/lib/ypri";
 
 export const runtime = "nodejs";
 
@@ -124,6 +125,19 @@ async function buildOfferWorkbook(offer: Offer): Promise<ExcelJS.Buffer> {
         : l.recommendedQty;
     row.getCell(17).numFmt = "General";
     sug.numFmt = "General";
+
+    const priced =
+      l.salePrice != null && l.unitPrice != null
+        ? l
+        : applyPriceToLine(l, offer.header.customerCode);
+    const unit = priced.unitPrice ?? 0;
+    const discount = (priced.discountPct ?? 0) / 100;
+    const priceCell = row.getCell(20);
+    priceCell.value = unit;
+    priceCell.numFmt = "#,##0.00";
+    const discCell = row.getCell(21);
+    discCell.value = discount;
+    discCell.numFmt = "0%";
     row.getCell(22).value = { formula: `(T${r}-(T${r}*U${r}))*S${r}` };
 
     const info = classifyComponent(l);

@@ -465,6 +465,25 @@ a.scarica:hover {
   display: flex;
   gap: 8px;
 }
+.sidebar-actions.customer-code {
+  flex-direction: column;
+  gap: 6px;
+}
+.sidebar-actions.customer-code label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.sidebar-actions.customer-code input {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
 
 button {
   font: inherit;
@@ -534,8 +553,8 @@ button.danger:hover:not(:disabled) {
   background: white;
   color: #111;
   border-radius: 10px;
-  padding: 28px 32px;
-  max-width: 900px;
+  padding: 20px 18px;
+  max-width: none;
   margin: 0 auto;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
 }
@@ -571,16 +590,33 @@ button.danger:hover:not(:disabled) {
 .offer table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  table-layout: fixed;
+  font-size: 10px;
+  line-height: 1.25;
 }
+.offer col.c-n { width: 28px; }
+.offer col.c-project { width: 112px; }
+.offer col.c-machine { width: 120px; }
+.offer col.c-code { width: 84px; }
+.offer col.c-um { width: 34px; }
+.offer col.c-qty { width: 68px; }
+.offer col.c-sug { width: 72px; }
+.offer col.c-price { width: 64px; }
+.offer col.c-deliv { width: 52px; }
+.offer col.c-prio { width: 32px; }
+.offer col.c-kind { width: 28px; }
+.offer col.c-x { width: 24px; }
 .offer th,
 .offer td {
   border: 1px solid #ccc;
-  padding: 6px 8px;
+  padding: 3px 4px;
   text-align: left;
   vertical-align: top;
+  overflow-wrap: anywhere;
 }
 .offer th {
+  font-size: 9px;
+  line-height: 1.2;
   background: #f2f2f2;
 }
 .offer td.num {
@@ -694,11 +730,11 @@ button.danger:hover:not(:disabled) {
 }
 .machine-head .mtitle {
   font-weight: 700;
-  font-size: 13px;
+  font-size: 12px;
 }
 .mdesc {
   padding: 6px 12px;
-  font-size: 12px;
+  font-size: 11px;
   color: #333;
   background: #f7f9fc;
   border-bottom: 1px solid #eee;
@@ -735,7 +771,7 @@ button.danger:hover:not(:disabled) {
 }
 .dbcode {
   display: block;
-  font-size: 10px;
+  font-size: 9px;
   color: #999;
 }
 

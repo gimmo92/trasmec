@@ -159,16 +159,26 @@ export function parseOrderText(text: string): Omit<ParsedOrder, "rawText"> {
   }
 
   let customer: string | undefined;
+  let customerCode: string | undefined;
+  const invoiced = text.match(/Invoiced\s+customer:\s*(\S+)\s*-\s*([^\[\n]+)/i);
+  if (invoiced) {
+    customerCode = invoiced[1].trim();
+    customer = invoiced[2].trim();
+  }
   const docLineIdx = lines.findIndex((l) => /NR\.\s*DOCUMENTO/i.test(l));
-  if (docLineIdx >= 0) {
+  if (!customer && docLineIdx >= 0) {
     for (let i = docLineIdx + 1; i < lines.length; i++) {
       if (lines[i]) {
         customer = lines[i];
         break;
       }
     }
-  } else {
-    customer = text.match(/Invoiced customer:\s*\S+\s*-\s*([^\[\n]+)/i)?.[1]?.trim();
+  }
+  if (!customerCode) {
+    const codeHit =
+      text.match(/(?:codice\s*cliente|customer\s*(?:code|no\.?|nr\.?))\s*[:.]?\s*(\d{4,8})/i) ??
+      text.match(/\bcliente\s*n[°o.]?\s*(\d{4,8})\b/i);
+    if (codeHit) customerCode = codeHit[1];
   }
 
   const location =
@@ -256,6 +266,7 @@ export function parseOrderText(text: string): Omit<ParsedOrder, "rawText"> {
     header: {
       projectName: projectName || undefined,
       customer,
+      customerCode,
       orderNumber,
       orderDate,
       location,

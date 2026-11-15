@@ -6,7 +6,7 @@ export const maxDuration = 120;
 
 /**
  * POST /api/generate
- * body: { orderPath: string, paths?: string[] }
+ * body: { orderPath: string, paths?: string[], customerCode?: string }
  * Legge il documento d'ordine, individua gli item dopo AFTER SALES, estrae i
  * ricambi delle relative distinte e aggiunge motori/sensori.
  */
@@ -14,15 +14,21 @@ export async function POST(req: NextRequest) {
   try {
     let paths: string[] = [];
     let orderPath = "";
+    let customerCode = "";
     try {
       const body = await req.json();
       if (Array.isArray(body?.paths)) paths = body.paths;
       if (typeof body?.orderPath === "string") orderPath = body.orderPath;
+      if (typeof body?.customerCode === "string") customerCode = body.customerCode.trim();
     } catch {
       /* body letto sotto */
     }
 
-    const offer = await buildSparePartsOffer({ orderPath, restrictPaths: paths });
+    const offer = await buildSparePartsOffer({
+      orderPath,
+      restrictPaths: paths,
+      customerCode: customerCode || undefined,
+    });
     return NextResponse.json({ offer });
   } catch (err) {
     return NextResponse.json(

@@ -45,6 +45,24 @@ function formatQty(qty: number | null | undefined): string {
   return qty.toLocaleString("it-IT", { maximumFractionDigits: 3 });
 }
 
+function formatPrice(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "0,00";
+  return value.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function priceTitle(line: ProposalLine): string {
+  const t = line.priceTrace;
+  if (!t) return "Prezzo di vendita";
+  if (!t.found) return "Articolo non in YPRIAI00 → prezzo 0";
+  const parts = [
+    `Base ${formatPrice(t.basePrice)}`,
+    `CTM ${t.ctm}${t.ctmFile ? ` (${t.ctmFile})` : ""}`,
+    `Magg. ${t.maggiorazione}%${t.maggiorazioneFile ? ` (${t.maggiorazioneFile})` : ""}`,
+    `Sconto ${t.sconto}%${t.scontoFile ? ` (${t.scontoFile})` : ""}`,
+  ];
+  return parts.join(" · ");
+}
+
 function LinesTable({
   lines,
   machine,
@@ -62,25 +80,35 @@ function LinesTable({
   const description = machineLabel(machine);
   return (
     <table>
+      <colgroup>
+        <col className="c-n" />
+        <col className="c-project" />
+        <col className="c-machine" />
+        <col className="c-code" />
+        <col className="c-desc" />
+        <col className="c-um" />
+        <col className="c-qty" />
+        <col className="c-sug" />
+        <col className="c-price" />
+        <col className="c-deliv" />
+        <col className="c-prio" />
+        <col className="c-kind" />
+        <col className="c-x" />
+      </colgroup>
       <thead>
         <tr>
-          <th style={{ width: "42px" }}>N.</th>
-          <th style={{ width: "140px" }}>Project</th>
-          <th style={{ width: "160px" }} title="Macchina da COC o distinta">
-            Description
-          </th>
-          <th style={{ width: "110px" }}>Cod.</th>
+          <th>N.</th>
+          <th>Project</th>
+          <th title="Macchina da COC o distinta">Description</th>
+          <th>Cod.</th>
           <th title="Descrizione componente">Description</th>
-          <th style={{ width: "48px" }}>U.M.</th>
-          <th style={{ width: "90px" }}>Installed Qty</th>
-          <th style={{ width: "110px" }}>Suggested Qty</th>
-          <th style={{ width: "72px" }}>Delivery</th>
-          <th style={{ width: "56px" }} title="*** NECESSARY  ** RECOMMENDED  * USEFUL">
-            ***
-          </th>
-          <th style={{ width: "44px" }} title="WEAR PART (W) / SPARE PART (S)">
-            W/S
-          </th>
+          <th>U.M.</th>
+          <th>Installed Qty</th>
+          <th>Suggested Qty</th>
+          <th title="Prezzo finale YPRI">Prezzo</th>
+          <th>Delivery</th>
+          <th title="*** NECESSARY  ** RECOMMENDED  * USEFUL">***</th>
+          <th title="WEAR PART (W) / SPARE PART (S)">W/S</th>
           <th className="row-del" />
         </tr>
       </thead>
@@ -115,6 +143,12 @@ function LinesTable({
             <td className="num">{offerUnit(l.um)}</td>
             <td className="num">{formatQty(l.installedQty)}</td>
             <td className="num">{formatQty(l.recommendedQty)}</td>
+            <td className="num" title={priceTitle(l)}>
+              {formatPrice(l.salePrice ?? 0)}
+              {l.discountPct ? (
+                <span className="dbcode">−{formatQty(l.discountPct)}%</span>
+              ) : null}
+            </td>
             <td className="num">{info.deliveryDays ?? ""}</td>
             <td className="num">{info.priority}</td>
             <td className="num">{info.kind}</td>
@@ -193,6 +227,7 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
   const [listeAll, setListeAll] = useState<ArchivioDistinta[]>([]);
   const [generali, setGenerali] = useState<DocumentoFile[]>([]);
   const [orderPath, setOrderPath] = useState("");
+  const [customerCode, setCustomerCode] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loadingDocs, setLoadingDocs] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -315,11 +350,16 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderPath, paths: Array.from(selected) }),
+        body: JSON.stringify({
+          orderPath,
+          paths: Array.from(selected),
+          customerCode: customerCode.trim() || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Errore");
       const next = data.offer as Offer;
+      if (next.header.customerCode) setCustomerCode(next.header.customerCode);
       setOffer(next);
       try {
         await persistOffer(next, null);
@@ -335,7 +375,7 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
     } finally {
       setGenerating(false);
     }
-  }, [orderPath, selected, persistOffer]);
+  }, [orderPath, selected, customerCode, persistOffer]);
 
   const removeLine = useCallback(
     (itemCode: string, kind: LineKind, index: number) => {
@@ -583,6 +623,20 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
           )}
         </div>
 
+        <div className="sidebar-actions customer-code">
+          <label htmlFor="customer-code">
+            Codice cliente
+            <input
+              id="customer-code"
+              type="text"
+              inputMode="numeric"
+              placeholder="es. 000583"
+              value={customerCode}
+              onChange={(event) => setCustomerCode(event.target.value)}
+              disabled={generating}
+            />
+          </label>
+        </div>
         <div className="sidebar-actions">
           <button
             className="primary"
@@ -672,7 +726,12 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
             <div className="oh">
               <div>
                 <h3>{offer.header.projectName || "OFFERTA RICAMBI"}</h3>
-                <div className="kv">Cliente: {offer.header.customer || "—"}</div>
+                <div className="kv">
+                  Cliente: {offer.header.customer || "—"}
+                  {offer.header.customerCode
+                    ? ` · cod. ${offer.header.customerCode}`
+                    : ""}
+                </div>
               </div>
               <div className="kv" style={{ textAlign: "right" }}>
                 <div>Ordine n. {offer.header.orderNumber || "—"}</div>

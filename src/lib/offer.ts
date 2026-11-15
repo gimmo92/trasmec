@@ -24,11 +24,14 @@ import {
   tkCodeForDrawing,
   type ChainCostRow,
 } from "./chaincost";
+import { applyPriceToLine } from "./ypri";
 
 export interface BuildOfferOptions {
   /** File dell'ordine da cui generare. Obbligatorio. */
   orderPath?: string;
   restrictPaths?: string[];
+  /** Codice anagrafica cliente YPRI; sovrascrive quello letto dal PDF. */
+  customerCode?: string;
 }
 
 function mapBomFiles(docs: DocumentoFile[]): Map<string, string> {
@@ -1090,6 +1093,15 @@ export async function buildSparePartsOffer(
   for (const machine of refined.machines) {
     keepChainAssemblySuffix(machine.spares);
     applyTransmissionChains(machine.spares, catalog, machine.warnings);
+  }
+
+  const customerCode =
+    (opts.customerCode || refined.header.customerCode || "").trim() || undefined;
+  if (customerCode) refined.header.customerCode = customerCode;
+  for (const machine of refined.machines) {
+    machine.spares = machine.spares.map((line) => applyPriceToLine(line, customerCode));
+    machine.motors = machine.motors.map((line) => applyPriceToLine(line, customerCode));
+    machine.sensors = machine.sensors.map((line) => applyPriceToLine(line, customerCode));
   }
   return refined;
 }

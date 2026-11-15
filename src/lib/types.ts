@@ -137,6 +137,26 @@ export interface ProposalLine {
   highlightGroup?: "cuscinetti";
   /** Indice del gruppo composto nella stessa distinta (bordo colore). */
   compoundHue?: number;
+  /** Prezzo unitario dopo CTM e maggiorazione, prima dello sconto cliente. */
+  unitPrice?: number;
+  /** Sconto commerciale in percentuale (0–100). */
+  discountPct?: number;
+  /** Prezzo finale di vendita (0 se articolo assente dai listini YPRI). */
+  salePrice?: number;
+  /** Dettaglio coefficienti usati per il prezzo. */
+  priceTrace?: {
+    found: boolean;
+    basePrice: number;
+    ctm: number;
+    ctmFile?: string;
+    ctmListino?: string;
+    maggiorazione: number;
+    maggiorazioneFile?: string;
+    maggiorazioneListino?: string;
+    sconto: number;
+    scontoFile?: string;
+    scontoListino?: string;
+  };
 }
 
 /** Sezione di una macchina (distinta) nell'offerta. */
@@ -159,6 +179,8 @@ export interface OfferHeader {
   projectName?: string; // es. REXUS BIOMASS ENERGY PLANT - SINGAPORE
   refProject?: string;
   customer?: string; // es. SOBONO ENERGY PTE LTD
+  /** Codice anagrafica cliente (YPRIAI01), per i tariffari. */
+  customerCode?: string;
   orderNumber?: string; // es. IT00125COC00050
   orderDate?: string;
   location?: string;
