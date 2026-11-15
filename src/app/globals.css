@@ -453,7 +453,8 @@ a.scarica:hover {
 .badge.listino,
 .badge.spare-part-list,
 .badge.info-spare-parts,
-.badge.calcolo-catena {
+.badge.calcolo-catena,
+.badge.ypri {
   color: #a0f0c0;
   border-color: #2a6a45;
 }

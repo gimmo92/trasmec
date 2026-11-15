@@ -57,10 +57,16 @@ export function listKindFromName(name: string): "lista-motori" | "lista-sensori"
   return null;
 }
 
+/** Estratti listino YPRIAI00…YPRIAI09: valgono per tutte le offerte. */
+export function isYpriFile(name: string): boolean {
+  return /^ypriai\d+\.csv$/i.test(path.basename(name));
+}
+
 /** Classificazione di riserva quando il contenuto non si lascia leggere. */
 export function kindFromName(name: string): ClassifiedDoc {
   const n = name.toLowerCase();
   const code = jobCode(name);
+  if (isYpriFile(name)) return { kind: "ypri" };
   const listed = listKindFromName(name);
   if (listed) return { kind: listed };
   const generale = generaleKindFromText(name);

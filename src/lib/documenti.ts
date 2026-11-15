@@ -18,7 +18,7 @@ import type { DocumentoFile } from "./types";
 
 let dirOverride: string | null = null;
 
-const ALLOWED_EXT = new Set([".pdf", ".xlsx", ".xlsm", ".xls", ".dwg"]);
+const ALLOWED_EXT = new Set([".pdf", ".xlsx", ".xlsm", ".xls", ".dwg", ".csv"]);
 
 /** Cartella documenti sul disco del progetto (non il mirror in /tmp). */
 export function localDocumentiDir(): string {
@@ -117,7 +117,7 @@ export function safeDocumentoName(name: string): string {
   const base = path.basename(name).replace(/[^\w.\- ()[\]]+/g, "_").trim();
   const ext = path.extname(base).toLowerCase();
   if (!base || base.startsWith(".") || !ALLOWED_EXT.has(ext)) {
-    throw new Error("Carica un PDF, un Excel (.xlsx, .xlsm, .xls) o un disegno DWG");
+    throw new Error("Carica un PDF, un Excel (.xlsx, .xlsm, .xls), un disegno DWG o un CSV");
   }
   return base;
 }
@@ -209,6 +209,7 @@ const CONTENT_TYPE: Record<string, string> = {
   ".xlsm": "application/vnd.ms-excel.sheet.macroEnabled.12",
   ".xls": "application/vnd.ms-excel",
   ".dwg": "application/acad",
+  ".csv": "text/csv",
 };
 
 export function documentoContentType(name: string): string {

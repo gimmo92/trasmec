@@ -78,6 +78,7 @@ export interface DocumentoFile {
     | "spare-part-list"
     | "info-spare-parts"
     | "calcolo-catena"
+    | "ypri"
     | "template"
     | "altro";
   /** Codice commessa BE####, se riconosciuto dentro il file. */
@@ -96,6 +97,7 @@ export const DOC_KIND_LABEL: Record<DocumentoFile["kind"], string> = {
   "spare-part-list": "spare part list",
   "info-spare-parts": "info spare parts",
   "calcolo-catena": "calcolo costo catene",
+  ypri: "listini YPRI",
   template: "template",
   altro: "da verificare",
 };
@@ -105,6 +107,7 @@ export const FILE_GENERALI: DocumentoFile["kind"][] = [
   "spare-part-list",
   "info-spare-parts",
   "calcolo-catena",
+  "ypri",
 ];
 
 /** Categoria di una riga di proposta ricambi. */
