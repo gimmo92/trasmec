@@ -543,7 +543,9 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
               <input type="radio" name="ordine" checked={orderPath === d.path} readOnly />
               <div className="meta">
                 <div className="name">{d.name}</div>
-                <div className="sub">{formatSize(d.sizeBytes)}</div>
+                <div className="sub">
+                  {formatSize(d.sizeBytes)} · caricato il {formatWhen(d.modified)}
+                </div>
               </div>
               <span className="badge ordine">offerta</span>
             </div>
@@ -567,7 +569,7 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
                 <div className="name">{d.name}</div>
                 <div className="sub">
                   {d.code && !d.name.toUpperCase().includes(d.code) ? `${d.code} · ` : ""}
-                  {formatSize(d.sizeBytes)}
+                  {formatSize(d.sizeBytes)} · caricato il {formatWhen(d.modified)}
                 </div>
               </div>
               <span className="badge distinta">distinta</span>
@@ -584,7 +586,9 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
                 <div key={d.path} className="doc static">
                   <div className="meta">
                     <div className="name">{d.name}</div>
-                    <div className="sub">{formatSize(d.sizeBytes)}</div>
+                    <div className="sub">
+                      {formatSize(d.sizeBytes)} · caricato il {formatWhen(d.modified)}
+                    </div>
                   </div>
                   <span className={`badge ${d.kind}`}>{DOC_KIND_LABEL[d.kind]}</span>
                 </div>
@@ -599,7 +603,9 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
                 <div key={d.path} className="doc static">
                   <div className="meta">
                     <div className="name">{d.name}</div>
-                    <div className="sub">{formatSize(d.sizeBytes)}</div>
+                    <div className="sub">
+                      {formatSize(d.sizeBytes)} · caricato il {formatWhen(d.modified)}
+                    </div>
                   </div>
                   <span className={`badge ${d.kind}`}>{DOC_KIND_LABEL[d.kind]}</span>
                 </div>
@@ -614,7 +620,9 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
                 <div key={d.path} className="doc static">
                   <div className="meta">
                     <div className="name">{d.name}</div>
-                    <div className="sub">{formatSize(d.sizeBytes)}</div>
+                    <div className="sub">
+                      {formatSize(d.sizeBytes)} · caricato il {formatWhen(d.modified)}
+                    </div>
                   </div>
                   <span className={`badge ${d.kind}`}>{DOC_KIND_LABEL[d.kind]}</span>
                 </div>

@@ -15,6 +15,19 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function formatCaricato(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const when = date.toLocaleString("it-IT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return `caricato il ${when}`;
+}
+
 function orderTitle(order: DocumentoFile): string {
   return order.name;
 }
@@ -220,7 +233,10 @@ export default function Archivio() {
                     <Elimina name={order.name} busy={deleting === order.name} onDelete={deleteFile} />
                   </div>
                 </div>
-                {orderCodesLabel(order) && <p className="hint">{orderCodesLabel(order)}</p>}
+                <p className="hint">
+                  {formatCaricato(order.modified)} · {formatSize(order.sizeBytes)}
+                  {orderCodesLabel(order) ? ` · ${orderCodesLabel(order)}` : ""}
+                </p>
                 {rows.length === 0 && <p className="hint">Nessun file associato a questa offerta.</p>}
                 {rows.map((file) => (
                   <DistintaCard
@@ -260,7 +276,9 @@ export default function Archivio() {
                 <div key={file.name} className="distinta-card static">
                   <div>
                     <div className="name">{file.name}</div>
-                    <div className="sub">{formatSize(file.sizeBytes)}</div>
+                    <div className="sub">
+                      {formatSize(file.sizeBytes)} · {formatCaricato(file.modified)}
+                    </div>
                   </div>
                   <div className="file-actions">
                     <Scarica name={file.name} />
@@ -306,7 +324,7 @@ function FileGenerali({
             <div>
               <div className="name">{file.name}</div>
               <div className="sub">
-                {DOC_KIND_LABEL[kind]} · {formatSize(file.sizeBytes)}
+                {DOC_KIND_LABEL[kind]} · {formatSize(file.sizeBytes)} · {formatCaricato(file.modified)}
               </div>
             </div>
             <div className="file-actions">
@@ -341,7 +359,7 @@ function DistintaCard({
         <div className="sub">
           {file.kind === "distinta" && file.code ? `${file.code} · ` : ""}
           {file.kind !== "distinta" && file.codes?.length ? `${file.codes.length} commesse · ` : ""}
-          {formatSize(file.sizeBytes)}
+          {formatSize(file.sizeBytes)} · {formatCaricato(file.modified)}
           {file.manual ? " · associazione manuale" : ""}
         </div>
         {ordini.length > 0 && (

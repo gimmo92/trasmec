@@ -129,7 +129,7 @@ export async function hydrateDocumenti(): Promise<void> {
     }
     if (!local && cloud) {
       const buf = await downloadFile(`documenti/${name}`);
-      if (buf) fs.writeFileSync(dest, buf);
+      if (buf) writeDownloaded(dest, buf, cloud.updatedAtMs);
       continue;
     }
     if (!local || !cloud) continue;
@@ -143,7 +143,16 @@ export async function hydrateDocumenti(): Promise<void> {
       continue;
     }
     const buf = await downloadFile(`documenti/${name}`);
-    if (buf) fs.writeFileSync(dest, buf);
+    if (buf) writeDownloaded(dest, buf, cloud.updatedAtMs);
+  }
+}
+
+/** Il file scaricato tiene la data dello storage, non l'istante del download. */
+function writeDownloaded(dest: string, buf: Buffer, updatedAtMs: number): void {
+  fs.writeFileSync(dest, buf);
+  if (updatedAtMs > 0) {
+    const when = new Date(updatedAtMs);
+    fs.utimesSync(dest, when, when);
   }
 }
 
