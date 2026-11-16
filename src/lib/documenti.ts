@@ -75,13 +75,31 @@ export function writableDocumentiDir(): string {
   return tmp;
 }
 
+function considerFile(
+  byName: Map<string, { name: string; full: string; size: number; mtimeMs: number }>,
+  file: { name: string; full: string; size: number; mtimeMs: number }
+): void {
+  const prev = byName.get(file.name);
+  if (!prev || file.mtimeMs >= prev.mtimeMs) byName.set(file.name, file);
+}
+
 function collectFiles(): { name: string; full: string; size: number; mtimeMs: number }[] {
   const byName = new Map<string, { name: string; full: string; size: number; mtimeMs: number }>();
-  for (const file of filesIn(localDocumentiDir())) byName.set(file.name, file);
+  for (const file of filesIn(localDocumentiDir())) considerFile(byName, file);
   if (dirOverride) {
-    for (const file of filesIn(dirOverride)) byName.set(file.name, file);
+    for (const file of filesIn(dirOverride)) considerFile(byName, file);
   }
   return [...byName.values()];
+}
+
+/**
+ * La copia più recente vince. La dimensione da sola non basta: un listino
+ * sostituito può avere gli stessi byte e restare quello vecchio.
+ * Tolleranza di 2 secondi fra orologio del disco e data dello storage.
+ */
+function localIsNewer(localMtimeMs: number, remoteUpdatedAtMs: number): boolean {
+  if (!remoteUpdatedAtMs) return true;
+  return localMtimeMs > remoteUpdatedAtMs + 2000;
 }
 
 /** Se Supabase è configurato, allinea i file locali al bucket e scarica quelli caricati online. */
@@ -93,21 +111,37 @@ export async function hydrateDocumenti(): Promise<void> {
   const localDir = localDocumentiDir();
   const writable = canWrite(localDir) ? localDir : cloudTmpDir();
   fs.mkdirSync(writable, { recursive: true });
-  if (writable !== localDir) dirOverride = writable;
+  dirOverride = writable === localDir ? null : writable;
 
   const remote = await listStorage("documenti");
-  const present = filesIn(writable);
-  for (const file of present) {
-    const known = remote.get(file.name);
-    if (known === undefined || (known > 0 && known !== file.size)) {
-      await uploadFile(`documenti/${file.name}`, file.full);
-      remote.set(file.name, file.size);
-    }
-  }
-  for (const [name, size] of remote) {
+  const present = new Map(filesIn(writable).map((file) => [file.name, file]));
+  const names = new Set<string>([...present.keys(), ...remote.keys()]);
+
+  for (const name of names) {
     if (isIgnoredFile(name)) continue;
+    const local = present.get(name);
+    const cloud = remote.get(name);
     const dest = path.join(writable, name);
-    if (fs.existsSync(dest) && (size <= 0 || fs.statSync(dest).size === size)) continue;
+
+    if (local && !cloud) {
+      await uploadFile(`documenti/${name}`, local.full);
+      continue;
+    }
+    if (!local && cloud) {
+      const buf = await downloadFile(`documenti/${name}`);
+      if (buf) fs.writeFileSync(dest, buf);
+      continue;
+    }
+    if (!local || !cloud) continue;
+
+    const sameSize = cloud.size > 0 && cloud.size === local.size;
+    const newerLocal = localIsNewer(local.mtimeMs, cloud.updatedAtMs);
+    if (sameSize && !newerLocal && !localIsNewer(cloud.updatedAtMs, local.mtimeMs)) continue;
+
+    if (newerLocal) {
+      await uploadFile(`documenti/${name}`, local.full);
+      continue;
+    }
     const buf = await downloadFile(`documenti/${name}`);
     if (buf) fs.writeFileSync(dest, buf);
   }
@@ -236,10 +270,19 @@ export function resolveDocumento(relPath: string): string {
     throw new Error("Percorso non valido");
   }
   const roots = [dirOverride, localDocumentiDir()].filter((dir): dir is string => Boolean(dir));
+  let newest = "";
+  let newestMtime = -1;
   for (const dir of roots) {
     const full = path.resolve(dir, name);
-    if (!full.startsWith(dir)) throw new Error("Percorso non valido");
-    if (fs.existsSync(full)) return full;
+    const root = path.resolve(dir);
+    if (full !== root && !full.startsWith(root + path.sep)) throw new Error("Percorso non valido");
+    if (!fs.existsSync(full)) continue;
+    const mtimeMs = fs.statSync(full).mtimeMs;
+    if (mtimeMs >= newestMtime) {
+      newest = full;
+      newestMtime = mtimeMs;
+    }
   }
-  throw new Error("File non trovato");
+  if (!newest) throw new Error("File non trovato");
+  return newest;
 }

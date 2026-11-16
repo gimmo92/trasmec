@@ -65,7 +65,8 @@ interface YpriTables {
   coeffs: CoeffRow[][];
   scontiCliente: ScontoRow[];
   scontiGruppo: ScontoRow[];
-  mtime: number;
+  /** mtime e dimensione di ogni CSV: un listino sostituito si ricarica anche a parità di data. */
+  stamp: string;
 }
 
 let cache: YpriTables | null = null;
@@ -147,18 +148,22 @@ function ypriPath(name: string): string | null {
   }
 }
 
-function latestMtime(names: string[]): number {
-  let max = 0;
+function tablesStamp(names: string[]): string {
+  const parts: string[] = [];
   for (const name of names) {
     const full = ypriPath(name);
-    if (!full) continue;
+    if (!full) {
+      parts.push(`${name}:missing`);
+      continue;
+    }
     try {
-      max = Math.max(max, fs.statSync(full).mtimeMs);
+      const stat = fs.statSync(full);
+      parts.push(`${full}:${stat.mtimeMs}:${stat.size}`);
     } catch {
-      /* ignore */
+      parts.push(`${name}:err`);
     }
   }
-  return max;
+  return parts.join("|");
 }
 
 function loadTables(): YpriTables {
@@ -174,8 +179,8 @@ function loadTables(): YpriTables {
     "YPRIAI08.csv",
     "YPRIAI09.csv",
   ];
-  const mtime = latestMtime(names);
-  if (cache && cache.mtime === mtime) return cache;
+  const stamp = tablesStamp(names);
+  if (cache && cache.stamp === stamp) return cache;
 
   const articles = new Map<string, ArticleRow>();
   const path00 = ypriPath("YPRIAI00.csv");
@@ -315,7 +320,7 @@ function loadTables(): YpriTables {
     }
   }
 
-  cache = { articles, clients, coeffs, scontiCliente, scontiGruppo, mtime };
+  cache = { articles, clients, coeffs, scontiCliente, scontiGruppo, stamp };
   return cache;
 }
 

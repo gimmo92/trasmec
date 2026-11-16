@@ -62,17 +62,27 @@ export async function putJson(objectPath: string, value: unknown): Promise<void>
   if (error) throw new Error(`Scrittura ${objectPath}: ${error.message}`);
 }
 
-export async function listStorage(prefix: string): Promise<Map<string, number>> {
+export interface StorageObjectInfo {
+  size: number;
+  /** Data di ultimo aggiornamento sullo storage. 0 se il bucket non la riporta. */
+  updatedAtMs: number;
+}
+
+export async function listStorage(prefix: string): Promise<Map<string, StorageObjectInfo>> {
   const sb = supabaseAdmin();
   const { data, error } = await sb.storage.from(CLOUD_BUCKET).list(prefix, { limit: 200 });
   if (error) throw new Error(`Elenco ${prefix}: ${error.message}`);
-  const out = new Map<string, number>();
+  const out = new Map<string, StorageObjectInfo>();
   for (const item of data ?? []) {
     if (!item.name || item.name.startsWith(".")) continue;
     if (item.id == null) continue;
     const meta = item.metadata as { size?: number; contentLength?: number } | null;
     const size = Number(meta?.size ?? meta?.contentLength ?? 0);
-    out.set(item.name, size);
+    const updatedAtMs = item.updated_at ? Date.parse(item.updated_at) : 0;
+    out.set(item.name, {
+      size,
+      updatedAtMs: Number.isFinite(updatedAtMs) ? updatedAtMs : 0,
+    });
   }
   return out;
 }
