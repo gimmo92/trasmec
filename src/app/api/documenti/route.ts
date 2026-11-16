@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { downloadFile, signedUploadUrl, useCloud } from "@/lib/cloud";
-import { listDocumentiClassificati, safeDocumentoName, saveDocumento } from "@/lib/documenti";
+import { dimenticaFile } from "@/lib/archivio";
+import { deleteDocumento, listDocumentiClassificati, safeDocumentoName, saveDocumento } from "@/lib/documenti";
 import { prepareApp } from "@/lib/prepare";
 
 export const runtime = "nodejs";
@@ -61,5 +62,20 @@ export async function POST(req: NextRequest) {
       { error: err instanceof Error ? err.message : "Errore di caricamento" },
       { status: 400 }
     );
+  }
+}
+
+/** Elimina un file dall'archivio, in locale e sullo storage. */
+export async function DELETE(req: NextRequest) {
+  try {
+    await prepareApp();
+    const name = safeDocumentoName(new URL(req.url).searchParams.get("name") ?? "");
+    await deleteDocumento(name);
+    await dimenticaFile(name);
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Errore di eliminazione";
+    const status = /non trovato/i.test(message) ? 404 : /non valido|Carica un/i.test(message) ? 400 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

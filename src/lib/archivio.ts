@@ -125,6 +125,14 @@ export async function readArchivio(): Promise<Archivio> {
   return { ordini, distinte, liste, generali, altri };
 }
 
+/** Toglie l'associazione salvata di un file eliminato. */
+export async function dimenticaFile(name: string): Promise<void> {
+  const links = await loadLinks();
+  if (!links[name]) return;
+  delete links[name];
+  await saveLinks(links);
+}
+
 /** Associa una distinta o una lista a uno o più ordini. La scelta resta anche se arrivano altri file. */
 export async function associaDistinta(distintaName: string, orderNames: string[]): Promise<ArchivioDistinta> {
   const archivio = await readArchivio();

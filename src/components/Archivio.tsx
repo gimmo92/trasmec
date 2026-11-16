@@ -31,6 +31,22 @@ function Scarica({ name }: { name: string }) {
   );
 }
 
+function Elimina({
+  name,
+  busy,
+  onDelete,
+}: {
+  name: string;
+  busy: boolean;
+  onDelete: (name: string) => void;
+}) {
+  return (
+    <button type="button" className="danger" disabled={busy} onClick={() => onDelete(name)}>
+      Elimina
+    </button>
+  );
+}
+
 function orderCodesLabel(order: DocumentoFile): string {
   const codes = order.codes ?? [];
   if (!codes.length) return order.code ?? "";
@@ -48,6 +64,7 @@ export default function Archivio() {
   const [section, setSection] = useState<"offerte" | "generali">("offerte");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [deleting, setDeleting] = useState("");
 
   const reload = useCallback(async () => {
     const res = await fetch("/api/archivio");
@@ -96,6 +113,23 @@ export default function Archivio() {
     if (!res.ok) {
       setDistinte(previous);
       setError(String(data.error || "Associazione non salvata"));
+    }
+  }
+
+  async function deleteFile(name: string) {
+    if (!window.confirm(`Eliminare «${name}»? Il file viene tolto dall'archivio.`)) return;
+    setError("");
+    setDeleting(name);
+    try {
+      const res = await fetch(`/api/documenti?name=${encodeURIComponent(name)}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(data.error || "Errore di eliminazione"));
+      if (filter === name) setFilter("");
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeleting("");
     }
   }
 
@@ -152,7 +186,7 @@ export default function Archivio() {
       {loading && <div className="status">Caricamento…</div>}
 
       {section === "generali" ? (
-        <FileGenerali files={generali} />
+        <FileGenerali files={generali} deleting={deleting} onDelete={deleteFile} />
       ) : (
         <>
           <div className="order-filters" role="group" aria-label="Filtra per offerta">
@@ -181,7 +215,10 @@ export default function Archivio() {
               <section key={order.name} className="order-group">
                 <div className="order-title">
                   <h3>{orderTitle(order)}</h3>
-                  <Scarica name={order.name} />
+                  <div className="file-actions">
+                    <Scarica name={order.name} />
+                    <Elimina name={order.name} busy={deleting === order.name} onDelete={deleteFile} />
+                  </div>
                 </div>
                 {orderCodesLabel(order) && <p className="hint">{orderCodesLabel(order)}</p>}
                 {rows.length === 0 && <p className="hint">Nessun file associato a questa offerta.</p>}
@@ -190,7 +227,9 @@ export default function Archivio() {
                     key={`${order.name}:${file.name}`}
                     file={file}
                     ordini={ordini}
+                    deleting={deleting === file.name}
                     onToggle={(orderName) => toggleOrder(file, orderName)}
+                    onDelete={deleteFile}
                   />
                 ))}
               </section>
@@ -206,7 +245,9 @@ export default function Archivio() {
                   key={file.name}
                   file={file}
                   ordini={ordini}
+                  deleting={deleting === file.name}
                   onToggle={(orderName) => toggleOrder(file, orderName)}
+                  onDelete={deleteFile}
                 />
               ))}
             </section>
@@ -223,6 +264,7 @@ export default function Archivio() {
                   </div>
                   <div className="file-actions">
                     <Scarica name={file.name} />
+                    <Elimina name={file.name} busy={deleting === file.name} onDelete={deleteFile} />
                     <span className={`badge ${file.kind}`}>{DOC_KIND_LABEL[file.kind]}</span>
                   </div>
                 </div>
@@ -235,7 +277,15 @@ export default function Archivio() {
   );
 }
 
-function FileGenerali({ files }: { files: DocumentoFile[] }) {
+function FileGenerali({
+  files,
+  deleting,
+  onDelete,
+}: {
+  files: DocumentoFile[];
+  deleting: string;
+  onDelete: (name: string) => void;
+}) {
   return (
     <section className="order-group">
       {FILE_GENERALI.map((kind) => {
@@ -261,6 +311,7 @@ function FileGenerali({ files }: { files: DocumentoFile[] }) {
             </div>
             <div className="file-actions">
               <Scarica name={file.name} />
+              <Elimina name={file.name} busy={deleting === file.name} onDelete={onDelete} />
               <span className={`badge ${file.kind}`}>{DOC_KIND_LABEL[file.kind]}</span>
             </div>
           </div>
@@ -273,11 +324,15 @@ function FileGenerali({ files }: { files: DocumentoFile[] }) {
 function DistintaCard({
   file,
   ordini,
+  deleting,
   onToggle,
+  onDelete,
 }: {
   file: ArchivioDistinta;
   ordini: DocumentoFile[];
+  deleting: boolean;
   onToggle: (orderName: string) => void;
+  onDelete: (name: string) => void;
 }) {
   return (
     <article className="distinta-card">
@@ -306,6 +361,7 @@ function DistintaCard({
       </div>
       <div className="file-actions">
         <Scarica name={file.name} />
+        <Elimina name={file.name} busy={deleting} onDelete={onDelete} />
         <span className={`badge ${file.kind}`}>{DOC_KIND_LABEL[file.kind]}</span>
       </div>
     </article>

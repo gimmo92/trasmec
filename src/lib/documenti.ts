@@ -225,6 +225,15 @@ export async function saveDocumento(
   return toDocumento({ name, size: stat.size, mtimeMs: stat.mtimeMs }, meta);
 }
 
+/** Toglie un file caricato, dal disco e dallo storage. */
+export async function deleteDocumento(name: string): Promise<void> {
+  const base = safeDocumentoName(name);
+  const dirs = [localDocumentiDir(), dirOverride].filter((dir): dir is string => Boolean(dir));
+  const hadLocal = dirs.some((dir) => fs.existsSync(path.join(dir, base)));
+  if (!hadLocal) throw new Error("File non trovato");
+  await removeDocumentoFile(base);
+}
+
 /** Toglie un file da disco e dallo storage. Il nome è solo il file, senza cartelle. */
 async function removeDocumentoFile(name: string): Promise<void> {
   const base = path.basename(name);
