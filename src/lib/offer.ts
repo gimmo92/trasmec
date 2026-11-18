@@ -123,8 +123,19 @@ function familyToken(desc: string, token: string): string {
   return token.toUpperCase();
 }
 
+/** «Sviluppo tappeto TN003377» ripete «Belt development TN003377». */
+function dropRepeatedBeltItalian(text: string): string {
+  return text
+    .replace(/\s*(?:\/\s*)?Sviluppo tappeto(?:\s+[A-Z0-9][A-Z0-9-]*)?/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function bomDescription(row: BomRow): string {
-  return [row.descriptionEN, row.descriptionIT].filter(Boolean).join(" ");
+  const en = (row.descriptionEN ?? "").replace(/\s+/g, " ").trim();
+  const it = (row.descriptionIT ?? "").replace(/\s+/g, " ").trim();
+  if (/\b(belt|tappeto)\b/i.test(`${en} ${it}`)) return dropRepeatedBeltItalian(en || it);
+  return [en, it].filter(Boolean).join(" ");
 }
 
 /** UCF/UCFL nel testo di un carter/protezione non è il pezzo UCF. */
@@ -726,8 +737,9 @@ function transmissionInches(key: string): string {
 }
 
 /**
- * Catena di trasmissione: codice della pagina Catena di Trasmissione,
- * descrizione solo con i pollici, e sotto la maglia di giunzione dello stesso passo.
+ * Catena di trasmissione: codice della pagina Catena di Trasmissione.
+ * Descrizione: Transmission Chain più il passo, senza il codice.
+ * Sotto, la maglia di giunzione dello stesso passo.
  */
 function applyTransmissionChains(
   spares: ProposalLine[],
@@ -753,7 +765,7 @@ function applyTransmissionChains(
     line.code = part.code;
     line.bomCode = part.code;
     line.mapped = true;
-    line.descriptionEN = `Chain ${transmissionInches(key)}`;
+    line.descriptionEN = `Transmission Chain ${transmissionInches(key)}`;
     out.push(line);
     if (!part.linkCode) continue;
     const count = /^(m|mt|mm)$/i.test((line.um ?? "").trim())
