@@ -12,6 +12,24 @@ export default function Funzionamento() {
       </header>
 
       <section>
+        <h3>0. Istruzioni personalizzate</h3>
+        <ul>
+          <li>
+            Il testo in Personalizza istruzioni si salva in locale e su cloud e
+            viene letto a ogni generazione.
+          </li>
+          <li>
+            Se chiedi un fac simile in cima all&apos;offerta, compare in
+            anteprima e nell&apos;export Excel.
+          </li>
+          <li>
+            Le altre indicazioni passano a Claude quando rifinisce le
+            descrizioni delle righe.
+          </li>
+        </ul>
+      </section>
+
+      <section>
         <h3>1. Quali macchine entrano</h3>
         <ul>
           <li>Si legge il PDF dell&apos;offerta. Entrano solo gli item dopo la riga AFTER SALES.</li>

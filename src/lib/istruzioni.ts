@@ -7,22 +7,30 @@ const CLOUD_PATH = "config/istruzioni.json";
 
 let cache: string | null = null;
 let fromCloud = false;
+/** Le scritture in corso non vanno coperte da una rilettura cloud più vecchia. */
+let epoch = 0;
+let writing = 0;
+let queue: Promise<unknown> = Promise.resolve();
+
+function enqueue<T>(task: () => Promise<T>): Promise<T> {
+  const run = queue.then(task, task);
+  queue = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
+}
 
 function readFile(): string {
-  if (cache !== null) return cache;
-  if (!fs.existsSync(DATA_FILE)) {
-    cache = "";
-    return cache;
-  }
+  if (!fs.existsSync(DATA_FILE)) return "";
   try {
     const parsed = JSON.parse(fs.readFileSync(DATA_FILE, "utf8")) as {
       text?: unknown;
     };
-    cache = typeof parsed.text === "string" ? parsed.text : "";
+    return typeof parsed.text === "string" ? parsed.text : "";
   } catch {
-    cache = "";
+    return "";
   }
-  return cache;
 }
 
 function writeFile(value: string) {
@@ -37,14 +45,24 @@ function writeFile(value: string) {
 /** Istruzioni libere dell'operatore, usate in generazione offerta. */
 export function getIstruzioni(): string {
   if (fromCloud && cache !== null) return cache;
-  return readFile();
+  if (cache !== null) return cache;
+  cache = readFile();
+  return cache;
 }
 
 export async function hydrateIstruzioni(): Promise<void> {
+  if (!useCloud()) {
+    cache = readFile();
+    fromCloud = false;
+    return;
+  }
+  const seen = epoch;
   const remote = await getJson<{ text?: unknown }>(CLOUD_PATH);
+  if (seen !== epoch || writing > 0) return;
   if (remote && typeof remote.text === "string") {
     cache = remote.text;
     fromCloud = true;
+    writeFile(remote.text);
     return;
   }
   const local = readFile();
@@ -54,10 +72,23 @@ export async function hydrateIstruzioni(): Promise<void> {
 }
 
 export async function setIstruzioni(text: string): Promise<string> {
-  const value = String(text ?? "");
-  cache = value;
-  fromCloud = useCloud();
-  writeFile(value);
-  if (useCloud()) await putJson(CLOUD_PATH, { text: value });
-  return value;
+  return enqueue(async () => {
+    const value = String(text ?? "");
+    writing += 1;
+    epoch += 1;
+    cache = value;
+    fromCloud = useCloud();
+    try {
+      writeFile(value);
+      if (useCloud()) await putJson(CLOUD_PATH, { text: value });
+    } finally {
+      writing -= 1;
+    }
+    return value;
+  });
+}
+
+/** True se le istruzioni chiedono di mettere FAC SIMILE in cima all'offerta. */
+export function wantsFacSimile(text = getIstruzioni()): boolean {
+  return /fac\s*[- ]?simil/i.test(text);
 }

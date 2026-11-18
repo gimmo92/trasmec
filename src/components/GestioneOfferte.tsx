@@ -727,6 +727,11 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
 
         {offer && (
           <div className="offer">
+            {offer.meta?.facSimile ? (
+              <div className="fac-simile" aria-label="Fac simile">
+                FAC SIMILE
+              </div>
+            ) : null}
             <div className="offer-logos">
               <img src="/logos/trasmec.png" alt="Trasmec" />
               <img src="/logos/tuv-iso9001.png" alt="TÜV SÜD ISO 9001" />

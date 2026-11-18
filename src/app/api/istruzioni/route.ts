@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getIstruzioni, setIstruzioni } from "@/lib/istruzioni";
-import { prepareApp } from "@/lib/prepare";
+import { getIstruzioni, hydrateIstruzioni, setIstruzioni } from "@/lib/istruzioni";
+import { useCloud } from "@/lib/cloud";
 
 export const runtime = "nodejs";
 
+/** Solo le istruzioni: non aspetta la sync dei documenti. */
+async function ready(): Promise<void> {
+  if (useCloud()) await hydrateIstruzioni();
+}
+
 export async function GET() {
   try {
-    await prepareApp();
+    await ready();
     return NextResponse.json({ text: getIstruzioni() });
   } catch (err) {
     return NextResponse.json(
@@ -19,7 +24,6 @@ export async function GET() {
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    await prepareApp();
     const text = await setIstruzioni(typeof body?.text === "string" ? body.text : "");
     return NextResponse.json({ text });
   } catch (err) {

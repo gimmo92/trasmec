@@ -8,6 +8,7 @@ Ricevi una BOZZA OFFERTA già costruita da regole fisse (distinta, tabella indic
 
 COMPITO
 - Riscrivi SOLO il campo descriptionEN di ogni riga, in inglese commerciale conciso.
+- Se ci sono ISTRUZIONI AGGIUNTIVE DELL'OPERATORE, applicale alle descrizioni (tono, forma, cosa includere o omettere nella descriptionEN).
 - Applica la colonna "strutturaDescrizione" dell'indice se presente. Segnaposto: {modello}, {resto}, {model} = famiglia/modello ricavato dalla distinta (es. TM100CLC, UCFL208). "X più numero" → X + misura (es. UCFL208). Non aggiungere "Support" se l'indice non è un supporto.
 - Per i gruppi "cuscinetti" (highlightGroup=cuscinetti): la prima riga è l'assieme (supporto/kit); le successive sono i componenti gialli della scheda (cuscinetti, ralle, tenute/ANT). Non fondere le righe. Descrizione assieme dal template; sotto = tipo + modello, breve.
 - Motori e sensori: tieni modello/funzione, togli rumore di distinta.
@@ -17,6 +18,7 @@ VIETATO
 - Cambiare code, bomCode, quantità, U.M., mapped, highlightGroup, compoundHue.
 - Inventare codici o pezzi non presenti nella bozza.
 - Restituire markdown o testo fuori dal JSON.
+- Ignorare le istruzioni aggiuntive dell'operatore quando riguardano le descrizioni.
 
 OUTPUT
 JSON stretto:

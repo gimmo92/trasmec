@@ -16,8 +16,8 @@ export default function IstruzioniPersonalizzate() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/istruzioni");
-      const data = await res.json();
+      const res = await fetch("/api/istruzioni", { credentials: "same-origin" });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Errore di caricamento");
       const value = typeof data.text === "string" ? data.text : "";
       saved.current = value;
@@ -38,21 +38,25 @@ export default function IstruzioniPersonalizzate() {
 
   const flash = (msg: string) => {
     setStatus(msg);
-    window.setTimeout(() => setStatus(""), 1600);
+    window.setTimeout(() => setStatus(""), 2200);
   };
 
   const persist = useCallback(async (value: string) => {
-    if (value === saved.current) return;
+    if (value === saved.current) {
+      flash("Già salvato");
+      return;
+    }
     const seq = ++saveSeq.current;
     setSaving(true);
     setError(null);
     try {
       const res = await fetch("/api/istruzioni", {
         method: "PUT",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: value }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (seq !== saveSeq.current) return;
       if (!res.ok) throw new Error(data.error || "Errore di salvataggio");
       saved.current = typeof data.text === "string" ? data.text : value;
@@ -79,9 +83,10 @@ export default function IstruzioniPersonalizzate() {
         <div>
           <h2>Personalizza istruzioni</h2>
           <p className="indici-hint">
-            Indicazioni extra per la generazione delle descrizioni in offerta.
-            Si salvano da sole e valgono alla prossima generazione, insieme
-            alle regole già impostate.
+            Indicazioni extra per la generazione delle offerte. Si salvano da
+            sole (o con Salva) e valgono alla prossima generazione. Se scrivi di
+            mettere fac simile in cima, compare in anteprima e in export.
+            Le altre indicazioni vanno alle descrizioni rifinite da Claude.
           </p>
         </div>
         <div className="actions">
@@ -106,7 +111,7 @@ export default function IstruzioniPersonalizzate() {
         placeholder={
           loading
             ? "Caricamento…"
-            : "Es. Per i cuscinetti usa sempre il nome commerciale completo. Non abbreviare i modelli. Preferisci descrizioni corte, una riga."
+            : "Es. Scrivi FAC SIMILE in cima alle offerte. Per i cuscinetti usa il nome commerciale completo."
         }
         onChange={(e) => onChange(e.target.value)}
         aria-label="Istruzioni personalizzate"

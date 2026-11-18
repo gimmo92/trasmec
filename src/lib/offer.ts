@@ -14,6 +14,7 @@ import {
   type SpareCatalog,
 } from "./sparecatalog";
 import { refineOfferWithClaude } from "./claudeoffer";
+import { getIstruzioni, wantsFacSimile } from "./istruzioni";
 import { prepareApp } from "./prepare";
 import { isJobCode, jobCode } from "./jobcode";
 import { readArchivio } from "./archivio";
@@ -1107,6 +1108,7 @@ export async function buildSparePartsOffer(
     machines.push(section);
   }
 
+  const istruzioni = getIstruzioni().trim();
   const draft: Offer = {
     header: order.header,
     machines,
@@ -1121,6 +1123,8 @@ export async function buildSparePartsOffer(
       includedFromOrder: order.includedItems.map((i) => i.code),
       machinesWithBom: machines.map((m) => m.itemCode),
       indiciUsed: indices.map((i) => i.indice),
+      istruzioni: istruzioni || undefined,
+      facSimile: wantsFacSimile(istruzioni) || undefined,
     },
   };
 
@@ -1138,5 +1142,8 @@ export async function buildSparePartsOffer(
     machine.motors = machine.motors.map((line) => applyPriceToLine(line, customerCode));
     machine.sensors = machine.sensors.map((line) => applyPriceToLine(line, customerCode));
   }
+  if (!refined.meta) refined.meta = {};
+  refined.meta.istruzioni = istruzioni || undefined;
+  refined.meta.facSimile = wantsFacSimile(istruzioni) || undefined;
   return refined;
 }
