@@ -457,6 +457,10 @@ async function buildCatalog(filePath: string): Promise<SpareCatalog> {
       : isTkSupport
         ? assemblyWithBolts || assembly
         : assembly || assemblyWithBolts;
+    if (isTmSupport && picked) {
+      const stem = picked.code.toUpperCase().replace(/[-.]S$/, "");
+      if (/^C\d+$/.test(stem) && !sheetBoms.includes(stem)) sheetBoms.push(stem);
+    }
     const aliasKeys = supportAliases(ws.name);
 
     if (picked) {

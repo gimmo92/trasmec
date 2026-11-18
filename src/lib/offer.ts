@@ -95,6 +95,28 @@ function tokenAccepted(token: string, word: string): boolean {
   return extra.length > 0 && extra.length <= 2 && /^[A-Z]+$/.test(extra);
 }
 
+const TM_EXECUTION = ["2RP", "CLC", "CLS", "LOC", "SP", "V", "P"];
+
+/** LOC, V LOC, CLC, 2RP, P CLC. Si ferma al primo pezzo che non è un'esecuzione. */
+function tmExecution(raw: string): string {
+  let rest = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  let out = "";
+  while (rest) {
+    const hit = TM_EXECUTION.find((word) => rest.startsWith(word));
+    if (!hit) break;
+    out += hit;
+    rest = rest.slice(hit.length);
+  }
+  return out;
+}
+
+function tmSheetKey(desc: string): string | null {
+  const m = desc.match(/\bTM\s*(\d+)\s*([A-Z0-9]*(?:\s+[A-Z0-9]+){0,3})/i);
+  if (!m) return null;
+  const exec = tmExecution(m[2] || "");
+  return `TM${m[1]}${exec}`;
+}
+
 function familyToken(desc: string, token: string): string {
   if (/^SECTOR$/i.test(token)) {
     const spec = desc.match(/Z\s*=\s*(\d+)(?:\D+P\s*=\s*(\d+))?/i);
@@ -104,10 +126,11 @@ function familyToken(desc: string, token: string): string {
   if (chainType && /chain|trasport|convey/i.test(`${token} ${desc}`)) {
     return `${chainType[1]}${chainType[2]}`.toUpperCase();
   }
-  // "TM 75 2RP" resta TM75 2RP: il 2RP è l'esecuzione in distinta, non va perso.
+  // "TM 65 LOC", "TM 65 V LOC", "TM 75 2RP", "TM140PCLC" → scheda omonima.
+  // Senza l'esecuzione, TM65 è troppo corto e non aggancia né LOC né V LOC.
   if (/^TM$/i.test(token)) {
-    const exec = desc.match(/\bTM\s*(\d+)\s+(\d[A-Z0-9]*(?:\s+[A-Z0-9]+)*)/i);
-    if (exec) return `TM${exec[1]} ${exec[2].toUpperCase()}`;
+    const model = tmSheetKey(desc);
+    if (model) return model;
   }
   // "SNL 520" / "Block SNL 520" → SNL520 (il numero è staccato in distinta)
   const re = new RegExp(

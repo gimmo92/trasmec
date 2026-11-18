@@ -108,8 +108,9 @@ export default function Funzionamento() {
             Dal foglio SPARE PARTS entrano giunto, catena e supporto completo,
             se il flag è S e la quantità è maggiore di zero. Il giunto a catena
             usa l&apos;inizio del drawing number e il passo della distinta, per
-            esempio IV003871-1-1/2. Se il casing in distinta è «TM 75 2RP»,
-            la descrizione del supporto tiene il 2RP.
+            esempio IV003871-1-1/2. Se il casing in distinta è «TM 75 2RP» o
+            «TM 65 LOC», la descrizione del supporto tiene l&apos;esecuzione e
+            aggancia la scheda omonima del listino.
           </li>
           <li>
             Il supporto TM resta una riga. Cuscinetti, ralla e tenute li aggiunge
