@@ -2,7 +2,7 @@ import path from "node:path";
 import { leggiMsg, MAX_MAIL_BODY } from "./msgmail";
 import { askClaude, isApiKeyConfigured } from "./anthropic";
 import type { DistintaComponent, DistintaSection, SourceHit } from "./sorgente";
-import { findSource } from "./sorgente";
+import { findSource, sourceFromUpload, type SorgenteCaricato } from "./sorgente";
 
 /** Condizioni riprese dall'offerta ricambi IT00126SPO00842R00. */
 const SCONTO = 10;
@@ -330,7 +330,30 @@ function scoreSection(section: DistintaSection, query: string): number {
   return score;
 }
 
+/** Codice da una colonna "… codice" (es. "allestimento codice" della catena). */
+function fieldCodice(section: DistintaSection): string {
+  const key = Object.keys(section.fields).find((name) => /\bcodice$/.test(name));
+  return key ? section.fields[key].split(/\s*\/\s*/)[0].trim() : "";
+}
+
+/** Catena di trasporto: tipo maglia, materiale perno, numero maglie e lunghezza. */
+function chainSpec(section: DistintaSection): string {
+  const field = (pattern: RegExp) =>
+    Object.entries(section.fields).find(([name]) => pattern.test(name))?.[1]?.split(/\s*\/\s*/)[0] ?? "";
+  const bits = ["CONVEYOR CHAIN"];
+  const maglia = field(/^maglia/);
+  const perno = field(/^perno/);
+  const maglie = field(/^maglie/);
+  const metri = section.fields.quant;
+  if (maglia) bits.push(maglia);
+  if (perno) bits.push(`PIN ${perno}`);
+  if (maglie) bits.push(`${maglie} LINKS`);
+  if (metri) bits.push(`L = ${metri} M`);
+  return bits.join(" ").toUpperCase();
+}
+
 function englishSpec(section: DistintaSection): string {
+  if (/^catena di trasporto/i.test(section.title.trim())) return chainSpec(section);
   const diam = section.fields["d(est) / d(int)"];
   const passi = (section.fields.passo || "")
     .split(/\s*\/\s*/)
@@ -473,7 +496,7 @@ function linesFromSection(
   }
 
   pushLine(righe, group, null, giorni, {
-    articolo: section.fields.disegno || section.code,
+    articolo: section.fields.disegno || section.code || fieldCodice(section),
     descrizione: englishSpec(section),
     disegno,
     qty: requested ?? bomQty(section),
@@ -498,6 +521,8 @@ export async function buildOffertaCliente(input: {
   email?: { subject: string; text: string };
   commessa?: string;
   righe?: { componente?: string; quantita?: string }[];
+  /** File sorgente indicati dall'utente: se ci sono, si usano al posto della ricerca in cartella. */
+  sorgenti?: SorgenteCaricato[];
   now?: Date;
 }): Promise<OffertaCliente> {
   const now = input.now ?? new Date();
@@ -527,7 +552,8 @@ export async function buildOffertaCliente(input: {
     ...matricole,
     ...codesIn(corpus),
   ].filter(Boolean);
-  const prelim = findSource(baseNeedles);
+  const caricati = sourceFromUpload(input.sorgenti ?? []);
+  const prelim = caricati ?? findSource(baseNeedles);
 
   let lettura: LetturaMail | null = null;
   let claudeError = "";
@@ -555,7 +581,7 @@ export async function buildOffertaCliente(input: {
     lettura?.matricola ?? "",
     ...richieste.flatMap((row) => [row.componente, ...(row.voci ?? []), ...codesIn(row.componente)]),
   ].filter(Boolean);
-  const hit = findSource(needles) ?? prelim;
+  const hit = caricati ?? findSource(needles) ?? prelim;
   const distinta = hit?.distinte[0];
   const avvisi: string[] = [];
   if (lettura) avvisi.push("Pezzi individuati da Claude nella mail.");
@@ -563,7 +589,7 @@ export async function buildOffertaCliente(input: {
   const fonti = hit ? hit.files.map((file) => path.basename(file)) : [];
 
   if (!hit) {
-    avvisi.push("Nessun file sorgente corrisponde alla commessa o al ticket.");
+    avvisi.push("Nessun file sorgente corrisponde alla commessa o al ticket: caricali in «File sorgente».");
   } else if (!distinta) {
     avvisi.push("Trovati allegati, ma nessuna distinta Excel da cui leggere i pezzi.");
   }

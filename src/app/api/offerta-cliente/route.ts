@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildOffertaCliente, textFromMailParts, textFromMsg } from "@/lib/offertacliente";
+import type { SorgenteCaricato } from "@/lib/sorgente";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -31,7 +32,18 @@ export async function POST(req: NextRequest) {
       righe = [];
     }
 
-    const offer = await buildOffertaCliente({ emailRaw, email: mailLetta, commessa, righe });
+    // File sorgente scelti dall'utente: le distinte Excel arrivano intere, gli altri solo col nome.
+    const sorgenti: SorgenteCaricato[] = [];
+    for (const item of form.getAll("sorgente")) {
+      if (item instanceof File) {
+        sorgenti.push({ name: item.name, data: Buffer.from(await item.arrayBuffer()) });
+      }
+    }
+    for (const item of form.getAll("sorgenteNome")) {
+      if (typeof item === "string" && item.trim()) sorgenti.push({ name: item.trim() });
+    }
+
+    const offer = await buildOffertaCliente({ emailRaw, email: mailLetta, commessa, righe, sorgenti });
     return NextResponse.json({ offer });
   } catch (err) {
     return NextResponse.json(

@@ -1,4 +1,6 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { readWorkbookGrids, type Grid } from "./excel";
 
@@ -90,6 +92,46 @@ function headerMap(row: Grid[number] | undefined): { col: number; name: string }
   return headers;
 }
 
+/** Riga con solo un titolo in colonna B e nient'altro: apre un blocco nuovo. */
+function isBlockTitle(row: Grid[number] | undefined): boolean {
+  if (!/^[A-Za-zÀ-ÿ]{3,}/.test(cell(row, 1))) return false;
+  for (let col = 2; col <= 16; col++) {
+    const value = cell(row, col);
+    if (value && value !== "0" && value !== "-") return false;
+  }
+  return true;
+}
+
+/** Seconda riga d'intestazione: solo etichette, nessun numero. */
+function isSubHeader(row: Grid[number] | undefined): boolean {
+  if (!row) return false;
+  let labels = 0;
+  for (let col = 1; col <= 16; col++) {
+    const value = cell(row, col);
+    if (!value || value === "-") continue;
+    if (/^-?\d+(?:[.,]\d+)?$/.test(value) || /\d{3}\.\d{2}/.test(value)) return false;
+    labels += 1;
+  }
+  return labels >= 2;
+}
+
+/** Nomi colonna = riga sopra + riga sotto ("allestimento codice"); la quantità resta "quant". */
+function mergeSubHeader(
+  headers: { col: number; name: string }[],
+  sub: Grid[number] | undefined
+): { col: number; name: string }[] {
+  const subNames = new Map(headerMap(sub).map((item) => [item.col, item.name]));
+  const merged = headers.map((header) => {
+    const extra = subNames.get(header.col);
+    if (!extra || header.name === "quant") return header;
+    return { col: header.col, name: `${header.name} ${extra}` };
+  });
+  for (const [col, name] of subNames) {
+    if (!merged.some((header) => header.col === col)) merged.push({ col, name });
+  }
+  return merged.sort((a, b) => a.col - b.col);
+}
+
 function parseQty(raw: string): number {
   const cleaned = raw.replace(/\s/g, "").replace(/\.(?=\d{3}\b)/g, "").replace(",", ".");
   const n = Number(cleaned);
@@ -114,10 +156,12 @@ function parseDistintaGrid(grid: Grid, file: string): DistintaFile {
     const code = cell(grid[i], 4);
     const flagged = cell(grid[i], 17).toLowerCase().startsWith("flg_");
     const switchedOn = cell(grid[i], 0).toUpperCase() === "X" || Number(grid[i]?.[16]) === 1;
-    const headers = headerMap(grid[i + 1]);
+    let headers = headerMap(grid[i + 1]);
     const data: Grid = [];
     for (let r = i + 2; r < grid.length; r++) {
       if (isSectionTitle(grid[r], grid[r + 1])) break;
+      // Titolo di un blocco successivo (es. "Ruote portasettori" sotto la catena): la sezione finisce.
+      if (data.length && isBlockTitle(grid[r])) break;
       const useful = [1, 2, 3, 4, 5, 6].some((col) => {
         const value = cell(grid[r], col);
         return value && value !== "0" && value !== "-";
@@ -127,6 +171,18 @@ function parseDistintaGrid(grid: Grid, file: string): DistintaFile {
         continue;
       }
       data.push(grid[r]);
+    }
+    // Intestazione su due righe (es. catena: "quant. | allestimento" sopra "(m) | codice"):
+    // la seconda riga completa i nomi delle colonne, non è un dato.
+    const quantCol = headers.find((header) => header.name === "quant")?.col;
+    const quantLabel = quantCol === undefined ? "" : cell(data[0], quantCol);
+    if (
+      data.length > 1 &&
+      quantLabel &&
+      !/\d/.test(quantLabel) &&
+      isSubHeader(data[0])
+    ) {
+      headers = mergeSubHeader(headers, data.shift());
     }
 
     const fields: Record<string, string> = {};
@@ -142,7 +198,7 @@ function parseDistintaGrid(grid: Grid, file: string): DistintaFile {
           ...new Set(
             data
               .map((row) => cell(row, header.col))
-              .filter((value) => value && value !== "-" && value !== "0")
+              .filter((value) => value && value !== "-" && value !== "0" && !/^quant\.?$/i.test(value))
           ),
         ];
         if (values.length) fields[header.name] = values.join(" / ");
@@ -222,4 +278,43 @@ export function findSource(needles: string[]): SourceHit | null {
     .filter((item): item is DistintaFile => Boolean(item));
 
   return { dir: best.dir, files: best.files, distinte };
+}
+
+/** File sorgente caricato dall'utente: le distinte Excel col contenuto, gli altri solo col nome. */
+export interface SorgenteCaricato {
+  name: string;
+  data?: Buffer;
+}
+
+const EXCEL_DISTINTA = /\.(xlsx|xlsm|xls)$/i;
+
+/**
+ * Usa i file indicati dall'utente al posto della ricerca in cartella.
+ * Le distinte vengono scritte in una cartella temporanea (funziona anche online) e poi tolte.
+ */
+export function sourceFromUpload(files: SorgenteCaricato[]): SourceHit | null {
+  if (!files.length) return null;
+  const dir = path.join(os.tmpdir(), "trasmec-sorgente", randomUUID());
+  fs.mkdirSync(dir, { recursive: true });
+  try {
+    const paths: string[] = [];
+    const distinte: DistintaFile[] = [];
+    for (const file of files) {
+      const name = path.basename(file.name).replace(/[^\w.\- ()[\]]+/g, "_");
+      if (!name) continue;
+      const full = path.join(dir, name);
+      paths.push(full);
+      if (!file.data || !EXCEL_DISTINTA.test(name)) continue;
+      fs.writeFileSync(full, file.data);
+      try {
+        const distinta = readDistinta(full);
+        if (distinta) distinte.push(distinta);
+      } catch {
+        // Excel che non è una distinta: resta tra le fonti, senza voci.
+      }
+    }
+    return { dir, files: paths, distinte };
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 }

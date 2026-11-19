@@ -17,6 +17,13 @@ interface MailCaricata {
   msg?: { subject: string; body: string };
 }
 
+/** Le distinte vanno al server intere: sotto il limite di upload della funzione (~4,5 MB). */
+const MAX_EXCEL_SORGENTE = 3 * 1024 * 1024;
+
+function isExcel(name: string): boolean {
+  return /\.(xlsx|xlsm|xls)$/i.test(name);
+}
+
 /** Il server può rispondere con testo semplice (es. file troppo grande): niente JSON.parse alla cieca. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function leggiRisposta(res: Response): Promise<any> {
@@ -120,6 +127,30 @@ export default function OfferteV2() {
   const [error, setError] = useState<string | null>(null);
   const [offer, setOffer] = useState<OffertaCliente | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [sorgenti, setSorgenti] = useState<File[]>([]);
+  const [sorgentiError, setSorgentiError] = useState<string | null>(null);
+  const sorgentiRef = useRef<HTMLInputElement>(null);
+
+  const aggiungiSorgenti = (list: FileList | null) => {
+    setSorgentiError(null);
+    const nuovi = Array.from(list ?? []);
+    const troppoGrandi = nuovi.filter((file) => isExcel(file.name) && file.size > MAX_EXCEL_SORGENTE);
+    if (troppoGrandi.length) {
+      setSorgentiError(
+        `Distinta troppo grande per il server (max 3 MB): ${troppoGrandi.map((f) => f.name).join(", ")}`
+      );
+    }
+    const validi = nuovi.filter((file) => !troppoGrandi.includes(file));
+    setSorgenti((prev) => [
+      ...prev.filter((file) => !validi.some((nuovo) => nuovo.name === file.name)),
+      ...validi,
+    ]);
+  };
+
+  const togliSorgente = (name: string) => {
+    setSorgenti((prev) => prev.filter((file) => file.name !== name));
+    setSorgentiError(null);
+  };
 
   const aggiorna = (id: string, patch: Partial<RigaRichiesta>) => {
     setRighe((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -183,6 +214,11 @@ export default function OfferteV2() {
         body.append("email", mail.file);
       }
       body.append("commessa", commessa);
+      for (const file of sorgenti) {
+        // Le distinte servono intere; di disegni e PDF basta il nome (niente upload pesanti).
+        if (isExcel(file.name)) body.append("sorgente", file);
+        else body.append("sorgenteNome", file.name);
+      }
       body.append(
         "righe",
         JSON.stringify(
@@ -272,6 +308,44 @@ export default function OfferteV2() {
             </button>
           )}
           {mailError ? <div className="warn small">{mailError}</div> : null}
+        </div>
+
+        <div className="v2-mail">
+          <span className="v2-mail-label">File sorgente</span>
+          <input
+            ref={sorgentiRef}
+            type="file"
+            multiple
+            accept=".xlsx,.xlsm,.xls,.dwg,.pdf,.png,.jpg,.jpeg"
+            className="v2-file"
+            aria-label="Carica file sorgente"
+            onChange={(e) => {
+              aggiungiSorgenti(e.target.files);
+              e.target.value = "";
+            }}
+          />
+          {sorgenti.map((file) => (
+            <div className="v2-mail-file" key={file.name}>
+              <div>
+                <div className="v2-mail-name">{file.name}</div>
+                <div className="v2-mail-meta">
+                  {formatSize(file.size)} ·{" "}
+                  {isExcel(file.name) ? "distinta, letta per i pezzi" : "usato per il numero di disegno"}
+                </div>
+              </div>
+              <button type="button" className="danger" onClick={() => togliSorgente(file.name)}>
+                Rimuovi
+              </button>
+            </div>
+          ))}
+          <button type="button" onClick={() => sorgentiRef.current?.click()}>
+            {sorgenti.length ? "Aggiungi file" : "Carica file sorgente"}
+          </button>
+          <span className="v2-mail-meta">
+            Distinta Excel e disegni del pezzo. Se li carichi, l&apos;offerta usa questi file invece
+            di cercarli per ticket o commessa.
+          </span>
+          {sorgentiError ? <div className="warn small">{sorgentiError}</div> : null}
         </div>
 
         <div className="v2-field">
