@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState, type ReactNode } from "react";
 
 interface RigaRichiesta {
   id: string;
@@ -15,6 +15,18 @@ interface MailCaricata {
   subject: string;
   /** .msg letto nel browser: si invia questo al posto del file. */
   msg?: { subject: string; body: string };
+}
+
+/** Codice senza spazi: può andare a capo dopo punti, trattini e barre invece di uscire dalla cella. */
+function spezzaCodice(code: string): ReactNode {
+  const parts = code.split(/(?<=[./\-_])/);
+  if (parts.length < 2) return code;
+  return parts.map((part, index) => (
+    <Fragment key={index}>
+      {part}
+      {index < parts.length - 1 ? <wbr /> : null}
+    </Fragment>
+  ));
 }
 
 /** Le distinte vanno al server intere: sotto il limite di upload della funzione (~4,5 MB). */
@@ -543,13 +555,13 @@ export default function OfferteV2() {
                   return (
                     <tr key={riga.pos}>
                       <td className="c">{riga.pos}</td>
-                      <td>{riga.articolo}</td>
+                      <td className="co-code">{spezzaCodice(riga.articolo)}</td>
                       <td className="co-desc">
                         {offer.intro ? <div>{offer.intro}</div> : null}
                         {offer.intro ? <div className="co-desc-gap" /> : null}
                         <div>{riga.descrizione}</div>
                       </td>
-                      <td>{riga.disegno}</td>
+                      <td className="co-code">{spezzaCodice(riga.disegno)}</td>
                       <td className="c">{riga.um}</td>
                       <td className="c">{fmtQty(riga.qty)}</td>
                       <td className="n">{fmtNum(riga.prezzo)}</td>

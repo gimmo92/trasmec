@@ -1336,8 +1336,13 @@ button.danger:hover:not(:disabled) {
 }
 
 .co-lines .w-pos { width: 4%; }
-.co-lines .w-code { width: 11%; }
-.co-lines .w-desc { width: 27%; }
+.co-lines .w-code { width: 13%; }
+.co-lines .w-desc { width: 25%; }
+
+/* Codici articolo e disegno senza spazi (013.11.04.13.01.12): vanno a capo dentro la cella. */
+.co-lines td.co-code {
+  overflow-wrap: anywhere;
+}
 .co-lines .w-draw { width: 11%; }
 .co-lines .w-um { width: 5%; }
 .co-lines .w-qty { width: 6%; }
