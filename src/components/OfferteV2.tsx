@@ -13,6 +13,22 @@ interface MailCaricata {
   name: string;
   size: number;
   subject: string;
+  /** .msg letto nel browser: si invia questo al posto del file. */
+  msg?: { subject: string; body: string };
+}
+
+/** Il server può rispondere con testo semplice (es. file troppo grande): niente JSON.parse alla cieca. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function leggiRisposta(res: Response): Promise<any> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    if (res.status === 413) {
+      return { error: "Il file è troppo grande per il server. Prova con una mail senza allegati." };
+    }
+    return { error: text.trim().slice(0, 200) || `Errore del server (${res.status})` };
+  }
 }
 
 interface OffertaRiga {
@@ -130,13 +146,19 @@ export default function OfferteV2() {
       return;
     }
     try {
-      // Il .msg di Outlook è binario: l'oggetto lo legge il server in generazione.
-      const subject = isMsg ? "" : subjectFromEml(await file.text());
+      if (isMsg) {
+        // Il .msg si legge qui: al server vanno solo oggetto e testo, non gli allegati
+        // (una mail con allegati supera facilmente il limite di upload del server).
+        const { leggiMsg } = await import("@/lib/msgmail");
+        const letta = leggiMsg(await file.arrayBuffer());
+        setMail({ file, name: file.name, size: file.size, subject: letta.subject, msg: letta });
+        return;
+      }
       setMail({
         file,
         name: file.name,
         size: file.size,
-        subject,
+        subject: subjectFromEml(await file.text()),
       });
     } catch (e) {
       setMailError(e instanceof Error ? e.message : "Impossibile leggere la mail");
@@ -154,7 +176,12 @@ export default function OfferteV2() {
     setError(null);
     try {
       const body = new FormData();
-      if (mail) body.append("email", mail.file);
+      if (mail?.msg) {
+        body.append("emailSubject", mail.msg.subject);
+        body.append("emailBody", mail.msg.body);
+      } else if (mail) {
+        body.append("email", mail.file);
+      }
       body.append("commessa", commessa);
       body.append(
         "righe",
@@ -166,7 +193,7 @@ export default function OfferteV2() {
         )
       );
       const res = await fetch("/api/offerta-cliente", { method: "POST", body });
-      const data = await res.json();
+      const data = await leggiRisposta(res);
       if (!res.ok) throw new Error(data.error || "Errore di generazione");
       setOffer(data.offer);
     } catch (e) {
@@ -186,7 +213,7 @@ export default function OfferteV2() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ offer, istruzione: istruzione.trim() }),
       });
-      const data = await res.json();
+      const data = await leggiRisposta(res);
       if (!res.ok) throw new Error(data.error || "Errore di modifica");
       setOffer(data.offer);
       setIstruzione("");

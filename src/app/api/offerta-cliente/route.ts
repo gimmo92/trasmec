@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildOffertaCliente, textFromMsg } from "@/lib/offertacliente";
+import { buildOffertaCliente, textFromMailParts, textFromMsg } from "@/lib/offertacliente";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -10,7 +10,12 @@ export async function POST(req: NextRequest) {
     const email = form.get("email");
     let emailRaw = "";
     let mailLetta: { subject: string; text: string } | undefined;
-    if (email instanceof File) {
+    const emailSubject = form.get("emailSubject");
+    const emailBody = form.get("emailBody");
+    if (typeof emailSubject === "string" || typeof emailBody === "string") {
+      // .msg letto nel browser: arrivano solo oggetto e testo, senza allegati.
+      mailLetta = textFromMailParts(String(emailSubject ?? ""), String(emailBody ?? ""));
+    } else if (email instanceof File) {
       if (email.name.toLowerCase().endsWith(".msg")) {
         mailLetta = textFromMsg(await email.arrayBuffer());
       } else {

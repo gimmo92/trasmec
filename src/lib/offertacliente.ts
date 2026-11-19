@@ -1,5 +1,5 @@
 import path from "node:path";
-import MsgReader from "@kenjiuno/msgreader";
+import { leggiMsg, MAX_MAIL_BODY } from "./msgmail";
 import { askClaude, isApiKeyConfigured } from "./anthropic";
 import type { DistintaComponent, DistintaSection, SourceHit } from "./sorgente";
 import { findSource } from "./sorgente";
@@ -135,17 +135,15 @@ export function textFromEml(raw: string): { subject: string; text: string } {
   return { subject, text: mailProse(decoded) };
 }
 
+/** Mail già letta (es. .msg di Outlook letto nel browser): pulisce il corpo come per le .eml. */
+export function textFromMailParts(subject: string, body: string): { subject: string; text: string } {
+  return { subject: subject.trim(), text: mailProse(body.slice(0, MAX_MAIL_BODY)) };
+}
+
 /** Mail salvata da Outlook (.msg): oggetto e testo, come per le .eml. */
 export function textFromMsg(data: ArrayBuffer): { subject: string; text: string } {
-  const info = new MsgReader(data).getFileData();
-  if (info.error) throw new Error(`File .msg non leggibile: ${info.error}`);
-  const subject = (info.subject ?? "").trim();
-  let body = info.body ?? "";
-  if (!body.trim()) {
-    if (info.bodyHtml) body = info.bodyHtml;
-    else if (info.html) body = Buffer.from(info.html).toString("utf8");
-  }
-  return { subject, text: mailProse(body) };
+  const { subject, body } = leggiMsg(data);
+  return textFromMailParts(subject, body);
 }
 
 function isBase64Line(line: string): boolean {
