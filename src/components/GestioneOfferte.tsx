@@ -707,13 +707,6 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
               </div>
             );
           }
-          if (claude.error) {
-            return (
-              <div className="warn small">
-                Claude non ha rifinito le descrizioni: {claude.error}
-              </div>
-            );
-          }
           return null;
         })()}
 
