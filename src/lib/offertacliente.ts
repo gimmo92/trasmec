@@ -1,7 +1,8 @@
 import path from "node:path";
 import { leggiMsg, MAX_MAIL_BODY } from "./msgmail";
 import { askClaude, isApiKeyConfigured } from "./anthropic";
-import { kitPerRuota, type KitSettori } from "./kitsettori";
+import { assiemeDaListino, kitPerRuota, type KitComponente } from "./kitsettori";
+import { extractPdfTextFromBuffer } from "./orderpdf";
 import type { DistintaComponent, DistintaFile, DistintaSection, RuotaSettori, SourceHit } from "./sorgente";
 import { findSource, sourceFromUpload, type SorgenteCaricato } from "./sorgente";
 import { priceArticle } from "./ypri";
@@ -151,6 +152,70 @@ export function textFromMailParts(subject: string, body: string): { subject: str
 export function textFromMsg(data: ArrayBuffer): { subject: string; text: string } {
   const { subject, body } = leggiMsg(data);
   return textFromMailParts(subject, body);
+}
+
+/** Allegato di una mail (PDF del cliente: richiesta d'offerta, ordine, elenco pezzi). */
+export interface AllegatoMail {
+  name: string;
+  data: Uint8Array;
+}
+
+/** PDF allegati di una .eml (parti application/pdf o con filename .pdf, in base64). */
+export function pdfDaEml(raw: string): AllegatoMail[] {
+  const out: AllegatoMail[] = [];
+  const headerRe = /(?:^|\r?\n)((?:Content-[A-Za-z-]+:[^\r\n]*(?:\r?\n[ \t][^\r\n]*)*\r?\n)+)\r?\n/g;
+  for (const match of raw.matchAll(headerRe)) {
+    const headers = match[1].replace(/\r?\n[ \t]+/g, " ");
+    const name =
+      headers.match(/filename\*?="?([^";\r\n]+)"?/i)?.[1] ?? headers.match(/name="?([^";\r\n]+)"?/i)?.[1] ?? "";
+    const isPdf = /content-type:\s*application\/pdf/i.test(headers) || /\.pdf$/i.test(name);
+    if (!isPdf || !/content-transfer-encoding:\s*base64/i.test(headers)) continue;
+    const start = (match.index ?? 0) + match[0].length;
+    const end = raw.indexOf("\n--", start);
+    const body = raw.slice(start, end < 0 ? raw.length : end).replace(/\s/g, "");
+    if (body.length < 100) continue;
+    out.push({ name: name || "allegato.pdf", data: Buffer.from(body, "base64") });
+  }
+  return out;
+}
+
+/** Limite per allegato: i manuali da diversi MB non sono richieste d'offerta. */
+const MAX_ALLEGATO = 2 * 1024 * 1024;
+
+/**
+ * Testo dei PDF allegati dal cliente. I PDF che sono offerte Trasmec (risposte già inviate)
+ * non entrano mai nella generazione.
+ */
+async function testoAllegati(
+  allegati: AllegatoMail[]
+): Promise<{ testo: string; usati: string[]; scartati: string[] }> {
+  const parts: string[] = [];
+  const usati: string[] = [];
+  const scartati: string[] = [];
+  for (const allegato of allegati.slice(0, 6)) {
+    if (allegato.data.length > MAX_ALLEGATO) {
+      scartati.push(`${allegato.name} (troppo grande)`);
+      continue;
+    }
+    let text = "";
+    try {
+      text = (await extractPdfTextFromBuffer(allegato.data)).trim();
+    } catch {
+      scartati.push(`${allegato.name} (non leggibile)`);
+      continue;
+    }
+    if (/spare parts offer|offer number|\bIT\d{5}SPO\d+/i.test(text)) {
+      scartati.push(`${allegato.name} (offerta Trasmec)`);
+      continue;
+    }
+    if (text.length < 20) {
+      scartati.push(`${allegato.name} (senza testo)`);
+      continue;
+    }
+    usati.push(allegato.name);
+    parts.push(`ALLEGATO ${allegato.name}\n${text.slice(0, 8000)}`);
+  }
+  return { testo: parts.join("\n\n"), usati, scartati };
 }
 
 function isBase64Line(line: string): boolean {
@@ -544,6 +609,18 @@ const GLOSSARIO: [RegExp, string][] = [
   [/\bDADO AUTOBLOCCANTE\b/g, "SELF-LOCKING NUT"],
   [/\bZINCAT[OAIE]\b/g, "GALVANIZED"],
   [/\bSP\./g, "TH."],
+  [/\bCOMPLETO DI CUSCINETTI E TENUTE\b/g, "COMPLETE WITH BEARINGS AND SEALS"],
+  [/\bCOMPLETO DI BULLONERIA\b/g, "COMPLETE WITH BOLTS"],
+  [/\bINGRASSATORI\b/g, "GREASE NIPPLES"],
+  [/\bCORPO SUPPORTO\b/g, "SUPPORT BODY"],
+  [/\bSUPPORTO\b/g, "SUPPORT"],
+  [/\bRALLA PER CUSCINETTO ASSIALE\b/g, "WASHER FOR AXIAL BEARING"],
+  [/\bCUSCINETTO RADIALE\b/g, "RADIAL BEARING"],
+  [/\bCUSCINETTO ASSIALE\b/g, "AXIAL BEARING"],
+  [/\bCUSCINETTO\b/g, "BEARING"],
+  [/\bGUARNIZIONE FRONTALE\b/g, "FRONT SEAL"],
+  [/\bGUARNIZIONE POSTERIORE\b/g, "REAR SEAL"],
+  [/\bGUARNIZIONE\b/g, "SEAL"],
 ];
 
 function inglese(text: string): string {
@@ -572,7 +649,7 @@ function pushKit(
   righe: OffertaRiga[],
   group: number,
   giorni: number,
-  kit: KitSettori,
+  kit: { code: string; descrizione: string; componenti: KitComponente[] },
   qty: number,
   prezzi: Prezzi
 ) {
@@ -668,6 +745,8 @@ export async function buildOffertaCliente(input: {
   righe?: { componente?: string; quantita?: string }[];
   /** File sorgente indicati dall'utente: se ci sono, si usano al posto della ricerca in cartella. */
   sorgenti?: SorgenteCaricato[];
+  /** PDF allegati alla mail (dal browser, per le .msg). Quelli delle .eml si leggono qui. */
+  allegati?: AllegatoMail[];
   /** Codice cliente YPRI: coefficienti e sconto del cliente. */
   codiceCliente?: string;
   /** Chi emette l'offerta (operatore Trasmec). */
@@ -683,9 +762,15 @@ export async function buildOffertaCliente(input: {
   const ticket =
     email.subject.match(/\{(\d{6,})\}/)?.[1] ?? email.text.match(/\{(\d{6,})\}/)?.[1] ?? "";
   const richiestaTicket = ticketRequest(email.text, ticket);
-  const corpus = richiestaTicket
+  const allegati = await testoAllegati([
+    ...(input.allegati ?? []),
+    ...(input.emailRaw ? pdfDaEml(input.emailRaw) : []),
+  ]);
+  const corpoMail = richiestaTicket
     ? `RICHIESTA DI QUESTO TICKET\n${richiestaTicket}\n\nCONTESTO (messaggi precedenti del cliente: servono a identificare la macchina, non sono la richiesta)\n${email.subject}\n${customerRequest(email.text)}`
     : `${email.subject}\n${customerRequest(email.text)}`;
+  // Spesso la richiesta vera è nel PDF allegato (es. "Richiesta di offerta" del cliente).
+  const corpus = allegati.testo ? `${corpoMail}\n\nALLEGATI DEL CLIENTE\n${allegati.testo}` : corpoMail;
   const rdo =
     corpus.match(/richiesta di offerta\s+n[°ºo.]?\s*(\d+)/i)?.[1] ??
     corpus.match(/\bRdO\s+(\d+)/i)?.[1] ??
@@ -738,14 +823,20 @@ export async function buildOffertaCliente(input: {
   const distinta = hit?.distinte[0];
   const avvisi: string[] = [];
   if (lettura) avvisi.push("Pezzi individuati da Claude nella mail.");
+  if (allegati.usati.length) avvisi.push(`Letti gli allegati: ${allegati.usati.join(", ")}.`);
+  if (allegati.scartati.length) avvisi.push(`Allegati non usati: ${allegati.scartati.join(", ")}.`);
   if (claudeError) avvisi.push(`Claude non ha letto la mail: ${claudeError}`);
   const fonti = hit ? hit.files.map((file) => path.basename(file)) : [];
 
-  if (!hit) {
-    avvisi.push("Nessun file sorgente corrisponde alla commessa o al ticket: caricali in «File sorgente».");
-  } else if (!distinta) {
-    avvisi.push("Trovati allegati, ma nessuna distinta Excel da cui leggere i pezzi.");
-  }
+  // Avviso sui file sorgente solo se qualche pezzo non si compone dalla Spare Parts List.
+  let servonoSorgenti = !richieste.length;
+  const avvisoSorgenti = () => {
+    if (!hit) {
+      avvisi.push("Nessun file sorgente corrisponde alla commessa o al ticket: caricali in «File sorgente».");
+    } else if (!distinta) {
+      avvisi.push("Trovati allegati, ma nessuna distinta Excel da cui leggere i pezzi.");
+    }
+  };
 
   const giorni = deliveryDays(corpus);
   const righe: OffertaRiga[] = [];
@@ -770,6 +861,19 @@ export async function buildOffertaCliente(input: {
       continue;
     }
 
+    // Codice o modello Trasmec presente nella Spare Parts List (es. C003369, TM 75 CLC):
+    // la riga si compone dal listino, anche senza distinta.
+    const testoRiga = [richiesta.componente, ...(richiesta.voci ?? [])].join(" ");
+    const daListino = /\b[A-Z]{1,6}\d{3,}|\bTM\s*\d{2,3}\b/i.test(testoRiga)
+      ? await assiemeDaListino(testoRiga)
+      : null;
+    if (daListino) {
+      pushKit(righe, group, giorni, daListino, richiesta.quantita ?? 1, prezzi);
+      group += 1;
+      continue;
+    }
+
+    servonoSorgenti = true;
     const enabled = (distinta?.sections ?? []).filter((section) => section.enabled);
     const fromVoci = sectionsFromVoci(enabled, richiesta.voci ?? []);
     const ranked = enabled
@@ -796,6 +900,8 @@ export async function buildOffertaCliente(input: {
     righe.push(...linesFromSection(chosen[0].section, group, richiesta.quantita, giorni, prezzi));
     group += 1;
   }
+
+  if (servonoSorgenti) avvisoSorgenti();
 
   if (!richieste.length && hit && !distinta) {
     const stems = [

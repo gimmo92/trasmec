@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildOffertaCliente, textFromMailParts, textFromMsg } from "@/lib/offertacliente";
+import {
+  buildOffertaCliente,
+  textFromMailParts,
+  textFromMsg,
+  type AllegatoMail,
+} from "@/lib/offertacliente";
 import { prepareApp } from "@/lib/prepare";
 import type { SorgenteCaricato } from "@/lib/sorgente";
 
@@ -46,6 +51,12 @@ export async function POST(req: NextRequest) {
       if (typeof item === "string" && item.trim()) sorgenti.push({ name: item.trim() });
     }
 
+    // PDF allegati alle .msg, estratti nel browser (quelli delle .eml li legge il server).
+    const allegati: AllegatoMail[] = [];
+    for (const item of form.getAll("allegato")) {
+      if (item instanceof File) allegati.push({ name: item.name, data: new Uint8Array(await item.arrayBuffer()) });
+    }
+
     const offer = await buildOffertaCliente({
       emailRaw,
       email: mailLetta,
@@ -54,6 +65,7 @@ export async function POST(req: NextRequest) {
       sorgenti,
       codiceCliente: String(form.get("codiceCliente") ?? ""),
       redattore: String(form.get("redattore") ?? ""),
+      allegati,
     });
     return NextResponse.json({ offer });
   } catch (err) {

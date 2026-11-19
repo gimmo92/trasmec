@@ -14,7 +14,7 @@ interface MailCaricata {
   size: number;
   subject: string;
   /** .msg letto nel browser: si invia questo al posto del file. */
-  msg?: { subject: string; body: string };
+  msg?: { subject: string; body: string; pdf: { name: string; data: Uint8Array }[] };
 }
 
 /** Codice senza spazi: può andare a capo dopo punti, trattini e barre invece di uscire dalla cella. */
@@ -224,6 +224,9 @@ export default function OfferteV2() {
       if (mail?.msg) {
         body.append("emailSubject", mail.msg.subject);
         body.append("emailBody", mail.msg.body);
+        for (const pdf of mail.msg.pdf) {
+          body.append("allegato", new Blob([pdf.data as BlobPart], { type: "application/pdf" }), pdf.name);
+        }
       } else if (mail) {
         body.append("email", mail.file);
       }
