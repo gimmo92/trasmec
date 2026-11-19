@@ -40,3 +40,6 @@ next-env.d.ts
 /src/lib/ordini.ts
 /src/app/api/ordini/
 /data/ordini.json
+
+# cache del controllo design
+/.impeccable/hook.cache.json
