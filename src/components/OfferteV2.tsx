@@ -124,17 +124,19 @@ export default function OfferteV2() {
     setMailError(null);
     if (!file) return;
     const lower = file.name.toLowerCase();
-    if (!lower.endsWith(".eml")) {
-      setMailError("Carica un file .eml");
+    const isMsg = lower.endsWith(".msg");
+    if (!isMsg && !lower.endsWith(".eml")) {
+      setMailError("Carica un file .eml o .msg");
       return;
     }
     try {
-      const raw = await file.text();
+      // Il .msg di Outlook è binario: l'oggetto lo legge il server in generazione.
+      const subject = isMsg ? "" : subjectFromEml(await file.text());
       setMail({
         file,
         name: file.name,
         size: file.size,
-        subject: subjectFromEml(raw),
+        subject,
       });
     } catch (e) {
       setMailError(e instanceof Error ? e.message : "Impossibile leggere la mail");
@@ -217,7 +219,7 @@ export default function OfferteV2() {
           <input
             ref={fileRef}
             type="file"
-            accept=".eml,message/rfc822"
+            accept=".eml,.msg,message/rfc822,application/vnd.ms-outlook"
             className="v2-file"
             aria-label="Carica mail"
             onChange={(e) => {

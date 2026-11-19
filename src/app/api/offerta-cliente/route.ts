@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildOffertaCliente } from "@/lib/offertacliente";
+import { buildOffertaCliente, textFromMsg } from "@/lib/offertacliente";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -9,8 +9,13 @@ export async function POST(req: NextRequest) {
     const form = await req.formData();
     const email = form.get("email");
     let emailRaw = "";
+    let mailLetta: { subject: string; text: string } | undefined;
     if (email instanceof File) {
-      emailRaw = await email.text();
+      if (email.name.toLowerCase().endsWith(".msg")) {
+        mailLetta = textFromMsg(await email.arrayBuffer());
+      } else {
+        emailRaw = await email.text();
+      }
     }
     const commessa = String(form.get("commessa") ?? "");
     let righe: { componente?: string; quantita?: string }[] = [];
@@ -21,7 +26,7 @@ export async function POST(req: NextRequest) {
       righe = [];
     }
 
-    const offer = await buildOffertaCliente({ emailRaw, commessa, righe });
+    const offer = await buildOffertaCliente({ emailRaw, email: mailLetta, commessa, righe });
     return NextResponse.json({ offer });
   } catch (err) {
     return NextResponse.json(

@@ -1,4 +1,5 @@
 import path from "node:path";
+import MsgReader from "@kenjiuno/msgreader";
 import { askClaude, isApiKeyConfigured } from "./anthropic";
 import type { DistintaComponent, DistintaSection, SourceHit } from "./sorgente";
 import { findSource } from "./sorgente";
@@ -132,6 +133,19 @@ export function textFromEml(raw: string): { subject: string; text: string } {
   const text = chunks.join("\n");
   const decoded = /=[0-9A-Fa-f]{2}/.test(text) ? decodeQuotedPrintable(text) : text;
   return { subject, text: mailProse(decoded) };
+}
+
+/** Mail salvata da Outlook (.msg): oggetto e testo, come per le .eml. */
+export function textFromMsg(data: ArrayBuffer): { subject: string; text: string } {
+  const info = new MsgReader(data).getFileData();
+  if (info.error) throw new Error(`File .msg non leggibile: ${info.error}`);
+  const subject = (info.subject ?? "").trim();
+  let body = info.body ?? "";
+  if (!body.trim()) {
+    if (info.bodyHtml) body = info.bodyHtml;
+    else if (info.html) body = Buffer.from(info.html).toString("utf8");
+  }
+  return { subject, text: mailProse(body) };
 }
 
 function isBase64Line(line: string): boolean {
@@ -482,6 +496,8 @@ function drawingFor(hit: SourceHit, query: string): string {
 
 export async function buildOffertaCliente(input: {
   emailRaw?: string;
+  /** Mail già letta (ad esempio da un .msg di Outlook). Ha la precedenza su emailRaw. */
+  email?: { subject: string; text: string };
   commessa?: string;
   righe?: { componente?: string; quantita?: string }[];
   now?: Date;
@@ -490,7 +506,8 @@ export async function buildOffertaCliente(input: {
   const valid = new Date(now);
   valid.setDate(valid.getDate() + 30);
 
-  const email = input.emailRaw ? textFromEml(input.emailRaw) : { subject: "", text: "" };
+  const email =
+    input.email ?? (input.emailRaw ? textFromEml(input.emailRaw) : { subject: "", text: "" });
   const corpus = `${email.subject}\n${customerRequest(email.text)}`;
   const ticket = corpus.match(/\{(\d{6,})\}/)?.[1] ?? "";
   const rdo =
