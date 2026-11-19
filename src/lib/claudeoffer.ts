@@ -7,23 +7,26 @@ export const OFFER_SYSTEM_PROMPT = `Sei l'editor commerciale delle offerte ricam
 Ricevi una BOZZA OFFERTA già costruita da regole fisse (distinta, tabella indici, Spare Parts List, motori ML, sensori SL). Il tuo compito NON è ricalcolare l'offerta.
 
 COMPITO
-- Riscrivi SOLO il campo descriptionEN di ogni riga, in inglese commerciale conciso.
-- Se ci sono ISTRUZIONI AGGIUNTIVE DELL'OPERATORE, applicale alle descrizioni (tono, forma, cosa includere o omettere nella descriptionEN).
+- Riscrivi il campo descriptionEN di ogni riga, in inglese commerciale conciso.
+- Se ci sono ISTRUZIONI AGGIUNTIVE DELL'OPERATORE, applicale: hanno la precedenza sulle regole di stile qui sotto.
+  - Se un'istruzione dà la descrizione da usare per un pezzo (o un tipo di pezzo), usala.
+  - Se un'istruzione dice che un pezzo (per codice, codice distinta, indice o descrizione) deve avere un codice diverso, restituisci "code" con il nuovo codice per quelle righe. Solo codici scritti nell'istruzione o ricavabili da essa senza inventare; se l'istruzione richiede dati che non hai, lascia il codice com'è.
 - Applica la colonna "strutturaDescrizione" dell'indice se presente. Segnaposto: {modello}, {resto}, {model} = famiglia/modello ricavato dalla distinta (es. TM100CLC, UCFL208). "X più numero" → X + misura (es. UCFL208). Non aggiungere "Support" se l'indice non è un supporto.
 - Per i gruppi "cuscinetti" (highlightGroup=cuscinetti): la prima riga è l'assieme (supporto/kit); le successive sono i componenti gialli della scheda (cuscinetti, ralle, tenute/ANT). Non fondere le righe. Descrizione assieme dal template; sotto = tipo + modello, breve.
 - Motori e sensori: tieni modello/funzione, togli rumore di distinta.
 
 VIETATO
 - Aggiungere, togliere o riordinare righe.
-- Cambiare code, bomCode, quantità, U.M., mapped, highlightGroup, compoundHue.
-- Inventare codici o pezzi non presenti nella bozza.
+- Cambiare code senza un'istruzione dell'operatore che lo chieda per quel pezzo.
+- Cambiare bomCode, quantità, U.M., mapped, highlightGroup, compoundHue.
+- Inventare codici o pezzi non presenti nella bozza o nelle istruzioni.
 - Restituire markdown o testo fuori dal JSON.
-- Ignorare le istruzioni aggiuntive dell'operatore quando riguardano le descrizioni.
+- Ignorare le istruzioni aggiuntive dell'operatore quando riguardano descrizioni o codici.
 
 OUTPUT
 JSON stretto:
-{"lines":[{"id":"string","descriptionEN":"string"}]}
-Una voce per ogni id ricevuto.`;
+{"lines":[{"id":"string","descriptionEN":"string","code":"solo se cambia per istruzione"}]}
+Una voce per ogni id ricevuto. Ometti "code" se il codice non cambia.`;
 
 function systemPrompt(): string {
   const extra = getIstruzioni().trim();
@@ -95,7 +98,7 @@ function collectLines(
   return { payload, apply };
 }
 
-function extractJson(text: string): { lines?: { id: string; descriptionEN?: string }[] } {
+function extractJson(text: string): { lines?: { id: string; descriptionEN?: string; code?: string }[] } {
   const trimmed = text.trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const raw = fenced ? fenced[1].trim() : trimmed;
@@ -131,7 +134,7 @@ export async function refineOfferWithClaude(
     };
   }
 
-  const userPrompt = `Bozza offerta ricambi Trasmec da rifinire (solo descriptionEN).
+  const userPrompt = `Bozza offerta ricambi Trasmec da rifinire (descriptionEN; code solo se un'istruzione dell'operatore lo chiede).
 
 Cliente: ${offer.header.customer || "—"}
 Progetto: ${offer.header.projectName || "—"}
@@ -160,15 +163,27 @@ ${JSON.stringify(payload, null, 2)}`;
       maxTokens: 8192,
     });
     const parsed = extractJson(text);
-    const byId = new Map(
-      (parsed.lines ?? []).map((l) => [String(l.id), (l.descriptionEN ?? "").trim()])
-    );
+    const byId = new Map((parsed.lines ?? []).map((l) => [String(l.id), l]));
+    const hasRules = getIstruzioni().trim().length > 0;
     let updated = 0;
+    const codesChanged: string[] = [];
     for (let i = 0; i < apply.length; i++) {
-      const desc = byId.get(String(i + 1));
-      if (!desc) continue;
-      apply[i].line.descriptionEN = desc;
-      updated += 1;
+      const out = byId.get(String(i + 1));
+      if (!out) continue;
+      const line = apply[i].line;
+      const desc = (out.descriptionEN ?? "").trim();
+      if (desc) {
+        line.descriptionEN = desc;
+        updated += 1;
+      }
+      // Codice diverso solo su istruzione dell'operatore: il vecchio resta come codice distinta.
+      const code = (out.code ?? "").trim();
+      if (hasRules && code && code.toUpperCase() !== line.code.toUpperCase()) {
+        codesChanged.push(`${line.code} → ${code}`);
+        if (!line.bomCode) line.bomCode = line.code;
+        line.code = code;
+        line.mapped = true;
+      }
     }
     return {
       ...offer,
@@ -179,7 +194,14 @@ ${JSON.stringify(payload, null, 2)}`;
           model: DEFAULT_MODEL,
           linesSent: payload.length,
           linesUpdated: updated,
+          codesChanged: codesChanged.length ? codesChanged : undefined,
         },
+        warnings: codesChanged.length
+          ? [
+              ...((offer.meta?.warnings as string[] | undefined) ?? []),
+              `Codici cambiati dalle istruzioni personalizzate: ${codesChanged.join(", ")}.`,
+            ]
+          : offer.meta?.warnings,
       },
     };
   } catch (err) {

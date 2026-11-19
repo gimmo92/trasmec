@@ -86,7 +86,12 @@ export default function IstruzioniPersonalizzate() {
             Indicazioni extra per la generazione delle offerte. Si salvano da
             sole (o con Salva) e valgono alla prossima generazione. Se scrivi di
             mettere fac simile in cima, compare in anteprima e in export.
-            Le altre indicazioni vanno alle descrizioni rifinite da Claude.
+            Le altre indicazioni valgono per entrambe le offerte: Claude cambia
+            codici, descrizioni e disegni dei pezzi come scrivi (es. «per il
+            supporto C003369 usa il codice C003369-X»). Quantità e prezzi non
+            cambiano; con un codice nuovo il prezzo si ricalcola dal listino.
+            Le modifiche fatte compaiono negli avvisi dell&apos;offerta. Le regole
+            che richiedono di leggere un file vanno chieste come modifica all&apos;app.
           </p>
         </div>
         <div className="actions">
