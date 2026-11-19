@@ -15,6 +15,7 @@ import {
 } from "./sparecatalog";
 import { refineOfferWithClaude } from "./claudeoffer";
 import { getIstruzioni, wantsFacSimile } from "./istruzioni";
+import { prezzoKit } from "./kitsettori";
 import { prepareApp } from "./prepare";
 import { isJobCode, jobCode } from "./jobcode";
 import { readArchivio } from "./archivio";
@@ -329,6 +330,20 @@ function resolveSellable(
   return { code: primary, mapped: false };
 }
 
+/** Kit settori a prezzo 0 nel listino YPRI: il prezzo è la somma dei componenti del kit. */
+function prezzoKitSeZero(line: ProposalLine, customerCode?: string): ProposalLine {
+  if (!/^KIT-SET-/i.test(line.code) || (line.unitPrice ?? 0) > 0) return line;
+  const unitPrice = prezzoKit(line.code, customerCode);
+  if (unitPrice === null) return line;
+  const sconto = line.discountPct ?? 0;
+  return {
+    ...line,
+    unitPrice,
+    salePrice: Math.round(unitPrice * (1 - sconto / 100) * 100) / 100,
+    notes: [line.notes, "prezzo = somma componenti del kit"].filter(Boolean).join(" · "),
+  };
+}
+
 /** CU1047: confronto senza maiuscole né spazi/punteggiatura. */
 function isCu1047(code: string): boolean {
   return normKey(code) === "CU1047";
@@ -582,13 +597,29 @@ function linesFromGroup(
     }
   }
 
+  // Kit settori: la distinta conta i settori singoli, il kit ne contiene perKit (es. 16 → 4 kit).
+  let qtyInstalled = installed;
+  if (/^KIT-/i.test(code)) {
+    const perKit = pns
+      .map((pn) => catalogLookup(catalog.assemblyByBom, pn.toUpperCase())?.perKit)
+      .find((n): n is number => typeof n === "number" && n > 0);
+    if (perKit && installed > 0) {
+      qtyInstalled = Math.ceil(installed / perKit);
+      if (installed % perKit !== 0) {
+        warnings.push(
+          `${code}: in distinta ${installed} settori, non multiplo dei ${perKit} del kit: ${qtyInstalled} kit.`
+        );
+      }
+    }
+  }
+
   const lines: ProposalLine[] = [
     toLine({
       code,
       bomCode,
       mapped,
       description,
-      installed,
+      installed: qtyInstalled,
       notes: indexRow.indice,
       um: group.find((h) => h.um)?.um,
     }),
@@ -1138,7 +1169,7 @@ export async function buildSparePartsOffer(
     (opts.customerCode || refined.header.customerCode || "").trim() || undefined;
   if (customerCode) refined.header.customerCode = customerCode;
   for (const machine of refined.machines) {
-    machine.spares = machine.spares.map((line) => applyPriceToLine(line, customerCode));
+    machine.spares = machine.spares.map((line) => prezzoKitSeZero(applyPriceToLine(line, customerCode), customerCode));
     machine.motors = machine.motors.map((line) => applyPriceToLine(line, customerCode));
     machine.sensors = machine.sensors.map((line) => applyPriceToLine(line, customerCode));
   }

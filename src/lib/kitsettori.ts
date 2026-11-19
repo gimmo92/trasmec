@@ -248,3 +248,30 @@ export function kitPerRuota(ruota: RuotaSettori, passo: string): KitSettori | nu
     componenti,
   };
 }
+
+/** KIT-SET-Z10-P142 → kit con i suoi componenti (stesse regole di kitPerRuota). */
+export function kitDaCodice(code: string): KitSettori | null {
+  const spec = code.toUpperCase().match(/^KIT-SET-([ZR])(\d+)-P(\d+)$/);
+  if (!spec) return null;
+  const blocco = catalogo().blocchi.get(code.toUpperCase());
+  return kitPerRuota(
+    { lato: spec[1] === "Z" ? "comando" : "rinvio", z: Number(spec[2]), settori: blocco?.settori ?? 4 },
+    spec[3]
+  );
+}
+
+/**
+ * Prezzo unitario di un kit settori che nel listino YPRI vale 0: somma dei componenti
+ * (prezzo listino × CTM × maggiorazione, per il cliente se indicato). Null se manca un componente.
+ */
+export function prezzoKit(code: string, customerCode?: string): number | null {
+  const kit = kitDaCodice(code);
+  if (!kit) return null;
+  let somma = 0;
+  for (const comp of kit.componenti) {
+    const result = priceArticle(comp.code, customerCode);
+    if (!result.found || result.unitPrice <= 0) return null;
+    somma += result.unitPrice * comp.qty;
+  }
+  return Math.round(somma * 100) / 100;
+}

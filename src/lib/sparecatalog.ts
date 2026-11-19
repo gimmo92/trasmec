@@ -11,6 +11,8 @@ export interface CatalogBearing {
 interface AssemblyInfo {
   code: string;
   description?: string;
+  /** Kit settori: settori contenuti in un kit (la distinta conta i settori singoli). */
+  perKit?: number;
 }
 
 /** Catena di trasmissione e, se c'è, la maglia di giunzione dello stesso passo. */
@@ -493,7 +495,11 @@ async function buildCatalog(filePath: string): Promise<SpareCatalog> {
   return catalog;
 }
 
-/** KIT SETTORI: Z=10 e passo 142 → SETTORE-Z10-P142-V. */
+/**
+ * KIT SETTORI: Z=10 e passo 142 → KIT-SET-Z10-P142, il codice "KIT-" nella cella gialla
+ * (colonna CODICE D.B.) del blocco. Il settore singolo (SETTORE-Z10-P142-V, colonna CODICE)
+ * resta solo se il blocco non ha un codice kit. perKit = Q.TA' di settori nel kit.
+ */
 function indexSectorSheet(catalog: SpareCatalog, ws: ExcelJS.Worksheet) {
   if (!/kit\s*settori/i.test(ws.name)) return;
   const maxRow = Math.min(ws.rowCount || 0, 400);
@@ -509,15 +515,43 @@ function indexSectorSheet(catalog: SpareCatalog, ws: ExcelJS.Worksheet) {
   }
   if (colCode < 0) return;
   for (let r = 1; r <= maxRow; r++) {
-    const title = cellStr(ws.getRow(r).getCell(1).value);
-    const spec = title.match(/^SETTORE\s+Z\s*=\s*(\d+)\s+P\s*=?\s*(\d+)/i);
+    const row = ws.getRow(r);
+    const title = cellStr(row.getCell(1).value);
+    const spec = title.match(/^SETTORE\s+([ZR])\s*=\s*(\d+)\s+P\s*=?\s*(\d+)/i);
     if (!spec) continue;
-    const code = cellStr(ws.getRow(r).getCell(colCode).value);
+    const single = cellStr(row.getCell(colCode).value);
+    let kit = "";
+    let kitYellow = false;
+    for (let c = 1; c <= maxCol; c++) {
+      const cell = row.getCell(c);
+      const value = cellStr(cell.value);
+      if (!/^KIT-/i.test(value)) continue;
+      const yellow = isYellowFill(cell.fill);
+      if (!kit || (yellow && !kitYellow)) {
+        kit = value;
+        kitYellow = yellow;
+      }
+    }
+    const code = kit || single;
     if (!code) continue;
-    const z = spec[1].padStart(2, "0");
-    const info = { code, description: title.replace(/\s+/g, " ").trim() };
-    catalog.assemblyByKey.set(normKey(`Z${z}P${spec[2]}`), info);
-    catalog.assemblyByBom.set(`SECTOR-Z${z}-P${spec[2]}`, info);
+    // Settori nel kit: il primo numero della riga prima della colonna CODICE (Q.TA').
+    let perKit: number | undefined;
+    for (let c = 2; c < colCode; c++) {
+      const n = Number(cellStr(row.getCell(c).value).replace(",", "."));
+      if (Number.isInteger(n) && n > 0) {
+        perKit = n;
+        break;
+      }
+    }
+    const side = spec[1].toUpperCase();
+    const z = spec[2].padStart(2, "0");
+    const info: AssemblyInfo = {
+      code,
+      description: title.replace(/\s+/g, " ").trim(),
+      perKit: kit ? perKit : undefined,
+    };
+    catalog.assemblyByKey.set(normKey(`${side}${z}P${spec[3]}`), info);
+    catalog.assemblyByBom.set(`SECTOR-${side}${z}-P${spec[3]}`, info);
   }
 }
 
