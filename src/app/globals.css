@@ -1373,6 +1373,23 @@ button.danger:hover:not(:disabled) {
   height: 8px;
 }
 
+/* Kit composto: la riga del kit porta il prezzo, le sottorighe (01.1, 01.2) ne descrivono il contenuto. */
+.co-lines tr.co-kit td {
+  font-weight: 700;
+}
+.co-lines tr.co-sub td,
+.co-lines tr.co-sub .co-desc {
+  font-style: italic;
+  font-weight: 400;
+}
+.co-lines tr.co-sub td {
+  border-top-color: transparent;
+}
+.co-intro {
+  color: #1d4ed8;
+  font-weight: 400;
+}
+
 .co-sum {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 8% 7%;

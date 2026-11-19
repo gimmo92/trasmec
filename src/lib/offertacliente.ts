@@ -1,12 +1,19 @@
 import path from "node:path";
 import { leggiMsg, MAX_MAIL_BODY } from "./msgmail";
 import { askClaude, isApiKeyConfigured } from "./anthropic";
-import type { DistintaComponent, DistintaSection, SourceHit } from "./sorgente";
+import { kitPerRuota, type KitSettori } from "./kitsettori";
+import type { DistintaComponent, DistintaFile, DistintaSection, RuotaSettori, SourceHit } from "./sorgente";
 import { findSource, sourceFromUpload, type SorgenteCaricato } from "./sorgente";
+import { priceArticle } from "./ypri";
 
-/** Condizioni riprese dall'offerta ricambi IT00126SPO00842R00. */
-const SCONTO = 10;
+/** Condizioni standard dell'offerta ricambi (lo sconto viene dal cliente nel listino YPRI). */
 const GIORNI = 20;
+
+/** Voci "virtuali" della distinta per le ruote portasettori: Claude le sceglie come le altre. */
+const VOCE_SETTORI: Record<RuotaSettori["lato"], string> = {
+  comando: "Settori lato comando",
+  rinvio: "Settori lato rinvio",
+};
 const INCITERM = "Free carrier (CASALBUTTANO)";
 const PAGAMENTO = "Bank transfer 90 days end of month";
 const IMBALLO = "PALLET WITH PLASTIC";
@@ -216,6 +223,32 @@ function customerRequest(text: string): string {
   return chosen.map((chunk) => chunk.body).join("\n") || text;
 }
 
+/**
+ * Ticket clonati: Trasmec apre il ticket nuovo rispondendo "regarding your request here below …:
+ * <richiesta del cliente> … we have opened the new dedicated ticket #N". La richiesta di QUESTO
+ * ticket è solo la parte citata; il resto della risposta (numero offerta, tempi) non si usa mai.
+ */
+function ticketRequest(text: string, ticket: string): string {
+  if (!ticket) return "";
+  const re = /On\s+\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}:\d{2}\s+(\S+)\s+wrote:/gi;
+  const marks = [...text.matchAll(re)];
+  for (let index = 0; index < marks.length; index++) {
+    if (!/@trasmec\.com/i.test(marks[index][1])) continue;
+    const start = (marks[index].index ?? 0) + marks[index][0].length;
+    const body = text.slice(start, marks[index + 1]?.index ?? text.length);
+    if (!new RegExp(`ticket\\s*#?\\s*${ticket}\\b`, "i").test(body)) continue;
+    const intro = body.search(/regarding your request|in merito alla (?:vostra|sua) richiesta|riguardo alla (?:vostra|sua) richiesta/i);
+    if (intro < 0) continue;
+    const afterIntro = body.indexOf(":", intro);
+    if (afterIntro < 0) continue;
+    const rest = body.slice(afterIntro + 1);
+    const end = rest.search(/please be informed|we have opened|abbiamo aperto|vi informiamo/i);
+    const quoted = (end >= 0 ? rest.slice(0, end) : rest).trim();
+    if (quoted.length > 10) return quoted;
+  }
+  return "";
+}
+
 function deliveryDays(text: string): number {
   const request = text.replace(/delivery\s+fca\s*:\s*\d+\s+working\s+days[^\n]*/gi, "");
   const match =
@@ -294,15 +327,6 @@ function attentionOf(text: string, fallback: string): string {
     return full?.[1] ?? surname;
   }
   return fallback;
-}
-
-function redattoreOf(text: string): string {
-  const offerAt = text.search(/in allegato nostra offerta|enclosed our offer/i);
-  if (offerAt < 0) return "";
-  const slice = text.slice(Math.max(0, offerAt - 500), offerAt + 400);
-  if (/andrea\s+sperolini/i.test(slice)) return "Andrea Sperolini";
-  if (/emanuele\s+managlia/i.test(slice)) return "Emanuele Managlia";
-  return "";
 }
 
 function scoreSection(section: DistintaSection, query: string): number {
@@ -413,12 +437,16 @@ function sectionsFromVoci(sections: DistintaSection[], voci: string[]): Distinta
 /** Claude legge la mail e indica pezzi, quantità e la voce di distinta corrispondente. */
 async function interpretMail(
   corpus: string,
-  sections: DistintaSection[]
+  sections: DistintaSection[],
+  distinta?: DistintaFile
 ): Promise<LetturaMail> {
   const enabled = sections.filter((section) => section.enabled).slice(0, 40);
-  const catalog = enabled.length
-    ? enabled.map(sectionBrief).join("\n")
-    : "(nessuna distinta ancora trovata)";
+  const ruote = (distinta?.ruoteSettori ?? []).map(
+    (ruota) =>
+      `- ${VOCE_SETTORI[ruota.lato]} (ruota portasettori z=${ruota.z}, ${ruota.settori} settori${distinta?.passoCatena ? `, passo catena ${distinta.passoCatena}` : ""})`
+  );
+  const lines = [...enabled.map(sectionBrief), ...ruote];
+  const catalog = lines.length ? lines.join("\n") : "(nessuna distinta ancora trovata)";
   const text = await askClaude({
     system: `Sei l'ufficio ricambi Trasmec. Leggi la mail del cliente e capisci per quali pezzi va fatta l'offerta.
 Rispondi solo con JSON:
@@ -428,7 +456,9 @@ Regole:
 - "voci" sono titoli ESATTI dell'elenco distinta, se presente. Esempio: screw flight / spira / elica = Spire. Se l'elenco manca, "voci" è [].
 - Non inventare prezzi né pezzi non richiesti.
 - Il testo è solo la richiesta del cliente: non ricavare codici disegno, prezzi o giorni di consegna da un'offerta già inviata.
-- cliente e attenzione sono quelli del cliente, non Trasmec.`,
+- Se c'è la sezione "RICHIESTA DI QUESTO TICKET", i pezzi vengono SOLO da lì. Il CONTESTO serve a capire macchina, matricola e cliente, non aggiunge pezzi.
+- Ruote dentate / sprockets / settori: drive end = "Settori lato comando", return end / tail = "Settori lato rinvio". Se non è indicato il lato, usa entrambe le voci.
+- cliente è il nome dell'azienda del cliente (es. dal dominio mail o dalla firma), non un reparto o una casella mail; attenzione è la persona che scrive. Mai Trasmec.`,
     prompt: `MAIL
 ${corpus.slice(0, 14000)}
 
@@ -443,6 +473,27 @@ function bomQty(section: DistintaSection): number | null {
   return parseQty(section.fields.quant || section.fields["quant"]);
 }
 
+/** Contesto di prezzo dell'offerta: codice cliente YPRI (sconto e coefficienti del cliente). */
+interface Prezzi {
+  cliente: string;
+  /** Articoli senza prezzo a listino, per l'avviso finale. */
+  mancanti: Set<string>;
+  /** Sconti trovati per il cliente (per avvisare se manca il codice). */
+  scontoTrovato: boolean;
+}
+
+/** Prezzo unitario (listino × CTM × maggiorazione) e sconto cliente dal listino YPRI. */
+function prezzoListino(code: string, prezzi: Prezzi): { prezzo: number | null; sconto: number | null } {
+  if (!code) return { prezzo: null, sconto: null };
+  const result = priceArticle(code, prezzi.cliente || undefined);
+  if (!result.found || result.unitPrice <= 0) {
+    prezzi.mancanti.add(code);
+    return { prezzo: null, sconto: null };
+  }
+  if (result.scontoSource) prezzi.scontoTrovato = true;
+  return { prezzo: result.unitPrice, sconto: prezzi.cliente ? result.sconto : null };
+}
+
 function pushLine(
   righe: OffertaRiga[],
   group: number,
@@ -450,11 +501,22 @@ function pushLine(
   giorni: number,
   line: Omit<OffertaRiga, "pos" | "um" | "prezzo" | "sconto" | "giorni"> & {
     qty: number | null;
-  }
+    /** Prezzo già calcolato (kit); se manca si cerca l'articolo a listino. */
+    prezzo?: number | null;
+    sconto?: number | null;
+  },
+  prezzi: Prezzi
 ) {
   const pos = sub === null
     ? String(group).padStart(2, "0")
     : `${String(group).padStart(2, "0")}.${sub}`;
+  // Le sottorighe di un kit descrivono il contenuto: il prezzo sta sulla riga del kit.
+  const priced =
+    sub !== null
+      ? { prezzo: null, sconto: null }
+      : line.prezzo !== undefined
+        ? { prezzo: line.prezzo, sconto: line.sconto ?? null }
+        : prezzoListino(line.articolo, prezzi);
   righe.push({
     pos,
     articolo: line.articolo,
@@ -462,9 +524,91 @@ function pushLine(
     disegno: line.disegno,
     um: "NR",
     qty: line.qty,
-    prezzo: null,
-    sconto: SCONTO,
+    prezzo: priced.prezzo,
+    sconto: priced.sconto,
+    giorni: sub === null ? giorni : null,
+  });
+}
+
+/** Descrizioni del listino (in italiano) rese in inglese per l'offerta. */
+const GLOSSARIO: [RegExp, string][] = [
+  [/\bKIT SETTORI\b/g, "KIT OF SECTORS"],
+  [/\bCOMPLETI DI BULLONERIA\b/g, "WITH SCREWS AND NUTS"],
+  [/\bKIT BULLONERIA FISSAGGIO SETTORI\b/g, "FIXING KIT FOR SECTORS"],
+  [/\bSETTORE\b/g, "SECTOR"],
+  [/\bSETTORI\b/g, "SECTORS"],
+  [/\bVERNICIAT[OAIE]\b/g, "PAINTED"],
+  [/\bCEMENTATO E TEMPRATO\b/g, "CASE HARDENED AND TEMPERED"],
+  [/\bVITE TE\b/g, "HEX HEAD SCREW"],
+  [/\bRONDELLA PIANA\b/g, "FLAT WASHER"],
+  [/\bDADO AUTOBLOCCANTE\b/g, "SELF-LOCKING NUT"],
+  [/\bZINCAT[OAIE]\b/g, "GALVANIZED"],
+  [/\bSP\./g, "TH."],
+];
+
+function inglese(text: string): string {
+  let out = text.toUpperCase();
+  for (const [re, en] of GLOSSARIO) out = out.replace(re, en);
+  return out.replace(/\s+/g, " ").trim();
+}
+
+/** Ruote della distinta richieste: dalle voci scelte da Claude o dal testo della riga. */
+function ruoteRichieste(richiesta: RichiestaRiga, distinta?: DistintaFile): RuotaSettori[] {
+  const ruote = distinta?.ruoteSettori ?? [];
+  if (!ruote.length) return [];
+  const voci = (richiesta.voci ?? []).map(norm);
+  const daVoci = ruote.filter((ruota) => voci.includes(norm(VOCE_SETTORI[ruota.lato])));
+  if (daVoci.length) return daVoci;
+  const text = norm(richiesta.componente);
+  if (!/settor|sector|sprocket|ruot[ae] dentat|ruota portasettori|ingranagg/.test(text)) return [];
+  const comando = /drive|comando|motric|head/.test(text);
+  const rinvio = /return|rinvio|tail|tension/.test(text);
+  if (comando === rinvio) return ruote;
+  return ruote.filter((ruota) => (ruota.lato === "comando" ? comando : rinvio));
+}
+
+/** Riga kit (con prezzo = somma dei componenti a listino) e sottorighe .1, .2 … senza prezzo. */
+function pushKit(
+  righe: OffertaRiga[],
+  group: number,
+  giorni: number,
+  kit: KitSettori,
+  qty: number,
+  prezzi: Prezzi
+) {
+  const proprio = prezzoListino(kit.code, { ...prezzi, mancanti: new Set() });
+  let prezzo = proprio.prezzo;
+  let sconto = proprio.sconto;
+  if (prezzo === null) {
+    // Kit a prezzo 0 nel listino: vale la somma dei componenti.
+    let somma = 0;
+    let completo = true;
+    for (const comp of kit.componenti) {
+      const p = prezzoListino(comp.code, prezzi);
+      if (p.prezzo === null) completo = false;
+      else somma += p.prezzo * comp.qty;
+      if (sconto === null) sconto = p.sconto;
+    }
+    prezzo = completo ? Math.round(somma * 100) / 100 : null;
+    if (!completo) prezzi.mancanti.add(kit.code);
+  }
+  pushLine(
+    righe,
+    group,
+    null,
     giorni,
+    { articolo: kit.code, descrizione: inglese(kit.descrizione), disegno: "", qty, prezzo, sconto },
+    prezzi
+  );
+  kit.componenti.forEach((comp, index) => {
+    pushLine(
+      righe,
+      group,
+      index + 1,
+      giorni,
+      { articolo: comp.code, descrizione: inglese(comp.descrizione), disegno: comp.disegno, qty: comp.qty },
+      prezzi
+    );
   });
 }
 
@@ -472,7 +616,8 @@ function linesFromSection(
   section: DistintaSection,
   group: number,
   requested: number | null,
-  giorni: number
+  giorni: number,
+  prezzi: Prezzi
 ): OffertaRiga[] {
   const righe: OffertaRiga[] = [];
   const disegno = section.fields.disegno || "";
@@ -482,7 +627,7 @@ function linesFromSection(
       descrizione: section.title.toUpperCase(),
       disegno,
       qty: requested ?? 1,
-    });
+    }, prezzi);
     section.components.forEach((item: DistintaComponent, index) => {
       const factor = requested ?? 1;
       pushLine(righe, group, index + 1, giorni, {
@@ -490,7 +635,7 @@ function linesFromSection(
         descrizione: `${item.role} ${item.tipo}`.toUpperCase(),
         disegno: "",
         qty: item.qty * factor,
-      });
+      }, prezzi);
     });
     return righe;
   }
@@ -500,7 +645,7 @@ function linesFromSection(
     descrizione: englishSpec(section),
     disegno,
     qty: requested ?? bomQty(section),
-  });
+  }, prezzi);
   return righe;
 }
 
@@ -523,6 +668,10 @@ export async function buildOffertaCliente(input: {
   righe?: { componente?: string; quantita?: string }[];
   /** File sorgente indicati dall'utente: se ci sono, si usano al posto della ricerca in cartella. */
   sorgenti?: SorgenteCaricato[];
+  /** Codice cliente YPRI: coefficienti e sconto del cliente. */
+  codiceCliente?: string;
+  /** Chi emette l'offerta (operatore Trasmec). */
+  redattore?: string;
   now?: Date;
 }): Promise<OffertaCliente> {
   const now = input.now ?? new Date();
@@ -531,8 +680,12 @@ export async function buildOffertaCliente(input: {
 
   const email =
     input.email ?? (input.emailRaw ? textFromEml(input.emailRaw) : { subject: "", text: "" });
-  const corpus = `${email.subject}\n${customerRequest(email.text)}`;
-  const ticket = corpus.match(/\{(\d{6,})\}/)?.[1] ?? "";
+  const ticket =
+    email.subject.match(/\{(\d{6,})\}/)?.[1] ?? email.text.match(/\{(\d{6,})\}/)?.[1] ?? "";
+  const richiestaTicket = ticketRequest(email.text, ticket);
+  const corpus = richiestaTicket
+    ? `RICHIESTA DI QUESTO TICKET\n${richiestaTicket}\n\nCONTESTO (messaggi precedenti del cliente: servono a identificare la macchina, non sono la richiesta)\n${email.subject}\n${customerRequest(email.text)}`
+    : `${email.subject}\n${customerRequest(email.text)}`;
   const rdo =
     corpus.match(/richiesta di offerta\s+n[°ºo.]?\s*(\d+)/i)?.[1] ??
     corpus.match(/\bRdO\s+(\d+)/i)?.[1] ??
@@ -560,7 +713,7 @@ export async function buildOffertaCliente(input: {
   if (!manual.length && corpus.trim().length > 40) {
     try {
       if (!isApiKeyConfigured()) throw new Error("API key mancante");
-      lettura = await interpretMail(corpus, prelim?.distinte[0]?.sections ?? []);
+      lettura = await interpretMail(corpus, prelim?.distinte[0]?.sections ?? [], prelim?.distinte[0]);
     } catch (err) {
       claudeError = err instanceof Error ? err.message : String(err);
     }
@@ -596,8 +749,27 @@ export async function buildOffertaCliente(input: {
 
   const giorni = deliveryDays(corpus);
   const righe: OffertaRiga[] = [];
+  const prezzi: Prezzi = { cliente: (input.codiceCliente ?? "").trim(), mancanti: new Set(), scontoTrovato: false };
   let group = 1;
   for (const richiesta of richieste) {
+    // Ruote dentate / settori: kit di listino ricavati da ruota (z, lato) e passo catena.
+    const ruote = ruoteRichieste(richiesta, distinta);
+    if (ruote.length) {
+      for (const ruota of ruote) {
+        const kit = kitPerRuota(ruota, distinta?.passoCatena ?? "");
+        if (!kit) {
+          avvisi.push(
+            `Settori lato ${ruota.lato} z=${ruota.z}${distinta?.passoCatena ? ` P${distinta.passoCatena}` : ": passo catena non trovato"}: nessun kit a listino.`
+          );
+          continue;
+        }
+        const kits = Math.ceil(ruota.settori / kit.settoriPerKit) * (richiesta.quantita ?? 1);
+        pushKit(righe, group, giorni, kit, kits, prezzi);
+        group += 1;
+      }
+      continue;
+    }
+
     const enabled = (distinta?.sections ?? []).filter((section) => section.enabled);
     const fromVoci = sectionsFromVoci(enabled, richiesta.voci ?? []);
     const ranked = enabled
@@ -616,12 +788,12 @@ export async function buildOffertaCliente(input: {
         descrizione: richiesta.componente.toUpperCase(),
         disegno: hit ? drawingFor(hit, richiesta.componente) : "",
         qty: richiesta.quantita,
-      });
+      }, prezzi);
       group += 1;
       continue;
     }
 
-    righe.push(...linesFromSection(chosen[0].section, group, richiesta.quantita, giorni));
+    righe.push(...linesFromSection(chosen[0].section, group, richiesta.quantita, giorni, prezzi));
     group += 1;
   }
 
@@ -647,7 +819,7 @@ export async function buildOffertaCliente(input: {
         descrizione: stem.toUpperCase(),
         disegno: stem,
         qty: 1,
-      });
+      }, prezzi);
       group += 1;
     }
   }
@@ -655,15 +827,23 @@ export async function buildOffertaCliente(input: {
   if (!richieste.length && !righe.length) {
     avvisi.push("Indica almeno un componente, oppure carica una mail che lo descrive.");
   }
-  if (righe.some((row) => row.prezzo === null)) {
-    avvisi.push("I file sorgente non contengono prezzi: quantità, codice e disegno arrivano dalla distinta.");
+  const senzaPrezzo = righe.filter((row) => !row.pos.includes(".") && row.prezzo === null);
+  if (senzaPrezzo.length) {
+    avvisi.push(
+      `Prezzo non trovato nel listino YPRI per: ${senzaPrezzo.map((row) => row.articolo || row.descrizione.slice(0, 40)).join(", ")}.`
+    );
+  }
+  if (!prezzi.cliente && righe.some((row) => row.prezzo !== null)) {
+    avvisi.push("Codice cliente mancante: prezzi con i coefficienti standard e senza sconto cliente.");
+  } else if (prezzi.cliente && !prezzi.scontoTrovato && righe.some((row) => row.prezzo !== null)) {
+    avvisi.push(`Nessuno sconto nel listino YPRI per il cliente ${prezzi.cliente}.`);
   }
 
   const meta = distinta?.meta;
   const macchina = meta?.macchina || "";
   const matricola =
     meta?.matricola || lettura?.matricola || input.commessa || matricole[0] || "";
-  const intro = [macchina ? `SPARE PART FOR ${macchina}` : "SPARE PART", matricola]
+  const intro = [macchina ? `SPARE PARTS FOR ${macchina}` : "SPARE PARTS", matricola]
     .filter(Boolean)
     .join("\n");
 
@@ -677,7 +857,7 @@ export async function buildOffertaCliente(input: {
       : party.indirizzo,
     destinazione: "",
     incoterm: INCITERM,
-    redattore: redattoreOf(corpus),
+    redattore: (input.redattore ?? "").trim(),
     rifInterno: ticket,
     rdo: lettura?.rdo || rdo,
     attenzione: lettura?.attenzione || attentionOf(corpus, party.attenzione),
@@ -685,7 +865,7 @@ export async function buildOffertaCliente(input: {
     imballo: IMBALLO,
     intro,
     righe,
-    consegna: `DELIVERY FCA: ${giorni} WORKING DAYS AFTER ORDER RECEIPT`,
+    consegna: `ESTIMATED TIME READY: ${giorni} WORKING DAYS AFTER ORDER RECEIPT`,
     avvisi,
     fonti,
   };

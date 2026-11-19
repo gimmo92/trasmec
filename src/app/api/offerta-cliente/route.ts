@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildOffertaCliente, textFromMailParts, textFromMsg } from "@/lib/offertacliente";
+import { prepareApp } from "@/lib/prepare";
 import type { SorgenteCaricato } from "@/lib/sorgente";
 
 export const runtime = "nodejs";
@@ -7,6 +8,8 @@ export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
+    // Listino YPRI e Spare Parts List: online vanno scaricati dallo storage prima dell'uso.
+    await prepareApp();
     const form = await req.formData();
     const email = form.get("email");
     let emailRaw = "";
@@ -43,7 +46,15 @@ export async function POST(req: NextRequest) {
       if (typeof item === "string" && item.trim()) sorgenti.push({ name: item.trim() });
     }
 
-    const offer = await buildOffertaCliente({ emailRaw, email: mailLetta, commessa, righe, sorgenti });
+    const offer = await buildOffertaCliente({
+      emailRaw,
+      email: mailLetta,
+      commessa,
+      righe,
+      sorgenti,
+      codiceCliente: String(form.get("codiceCliente") ?? ""),
+      redattore: String(form.get("redattore") ?? ""),
+    });
     return NextResponse.json({ offer });
   } catch (err) {
     return NextResponse.json(

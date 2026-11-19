@@ -28,9 +28,22 @@ export interface DistintaSection {
   components: DistintaComponent[];
 }
 
+/** Ruota portasettori di un trasportatore a catena (lato comando o lato rinvio). */
+export interface RuotaSettori {
+  lato: "comando" | "rinvio";
+  /** Denti del settore (z). */
+  z: number;
+  /** Settori montati sulla ruota. */
+  settori: number;
+}
+
 export interface DistintaFile {
   meta: DistintaMeta;
   sections: DistintaSection[];
+  /** Ruote portasettori del blocco "Ruote portasettori". */
+  ruoteSettori: RuotaSettori[];
+  /** Passo catena in mm, dalle prime cifre del tipo maglia (26040 → 260). */
+  passoCatena: string;
 }
 
 function docsDir(): string {
@@ -227,7 +240,47 @@ function parseDistintaGrid(grid: Grid, file: string): DistintaFile {
     });
   }
 
-  return { meta, sections };
+  return { meta, sections, ruoteSettori: ruoteSettori(grid), passoCatena: passoCatena(sections) };
+}
+
+/**
+ * Blocco "Ruote portasettori": una riga per lato (Comando / Rinvio) con il numero di settori
+ * sotto "settori" e i denti sotto "z".
+ */
+function ruoteSettori(grid: Grid): RuotaSettori[] {
+  const start = grid.findIndex((row) => /^ruote\s+portasettori$/i.test(cell(row, 1)));
+  if (start < 0) return [];
+  let colSettori = -1;
+  let colZ = -1;
+  const out: RuotaSettori[] = [];
+  for (let r = start + 1; r < Math.min(grid.length, start + 8); r++) {
+    const row = grid[r] ?? [];
+    for (let col = 0; col < row.length; col++) {
+      const label = norm(cell(row, col));
+      if (label === "settori" && colSettori < 0) colSettori = col;
+      if (label === "z" && colZ < 0) colZ = col;
+    }
+    const lato = norm(cell(row, 1));
+    if (lato !== "comando" && lato !== "rinvio") {
+      if (out.length) break;
+      continue;
+    }
+    if (colSettori < 0 || colZ < 0) continue;
+    const z = Number(cell(row, colZ));
+    const settori = Number(cell(row, colSettori));
+    if (Number.isInteger(z) && z > 0 && Number.isFinite(settori) && settori > 0) {
+      out.push({ lato, z, settori });
+    }
+  }
+  return out;
+}
+
+/** Passo catena: dal tipo maglia della "Catena di trasporto" (26040 → 260, 14226 → 142). */
+function passoCatena(sections: DistintaSection[]): string {
+  const catena = sections.find((section) => /^catena di trasporto/i.test(section.title.trim()));
+  if (!catena) return "";
+  const maglia = Object.entries(catena.fields).find(([name]) => /^maglia/.test(name))?.[1] ?? "";
+  return maglia.match(/\b(\d{3})\d{2}\b/)?.[1] ?? "";
 }
 
 export function readDistinta(filePath: string): DistintaFile | null {

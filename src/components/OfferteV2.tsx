@@ -130,6 +130,8 @@ function nuovaRiga(): RigaRichiesta {
 
 export default function OfferteV2() {
   const [commessa, setCommessa] = useState("");
+  const [codiceCliente, setCodiceCliente] = useState("");
+  const [redattore, setRedattore] = useState("");
   const [righe, setRighe] = useState<RigaRichiesta[]>(() => [nuovaRiga()]);
   const [mail, setMail] = useState<MailCaricata | null>(null);
   const [mailError, setMailError] = useState<string | null>(null);
@@ -226,6 +228,8 @@ export default function OfferteV2() {
         body.append("email", mail.file);
       }
       body.append("commessa", commessa);
+      body.append("codiceCliente", codiceCliente);
+      body.append("redattore", redattore);
       for (const file of sorgenti) {
         // Le distinte servono intere; di disegni e PDF basta il nome (niente upload pesanti).
         if (isExcel(file.name)) body.append("sorgente", file);
@@ -358,6 +362,28 @@ export default function OfferteV2() {
             di cercarli per ticket o commessa.
           </span>
           {sorgentiError ? <div className="warn small">{sorgentiError}</div> : null}
+        </div>
+
+        <div className="v2-field">
+          <label htmlFor="v2-cliente">Codice cliente</label>
+          <input
+            id="v2-cliente"
+            value={codiceCliente}
+            onChange={(e) => setCodiceCliente(e.target.value)}
+            placeholder="Codice YPRI, es. 000438 — per sconto e coefficienti del cliente"
+            autoComplete="off"
+          />
+        </div>
+
+        <div className="v2-field">
+          <label htmlFor="v2-redattore">Emesso da</label>
+          <input
+            id="v2-redattore"
+            value={redattore}
+            onChange={(e) => setRedattore(e.target.value)}
+            placeholder="Nome di chi firma l'offerta"
+            autoComplete="name"
+          />
         </div>
 
         <div className="v2-field">
@@ -547,18 +573,20 @@ export default function OfferteV2() {
                 </tr>
               </thead>
               <tbody>
-                {offer.righe.map((riga) => {
+                {offer.righe.map((riga, index) => {
+                  const sotto = riga.pos.includes(".");
+                  const kit = !sotto && offer.righe.some((other) => other.pos.startsWith(`${riga.pos}.`));
                   const lordo =
                     riga.prezzo !== null && riga.qty !== null
                       ? riga.prezzo * riga.qty
                       : null;
                   return (
-                    <tr key={riga.pos}>
+                    <tr key={riga.pos} className={sotto ? "co-sub" : kit ? "co-kit" : undefined}>
                       <td className="c">{riga.pos}</td>
                       <td className="co-code">{spezzaCodice(riga.articolo)}</td>
                       <td className="co-desc">
-                        {offer.intro ? <div>{offer.intro}</div> : null}
-                        {offer.intro ? <div className="co-desc-gap" /> : null}
+                        {offer.intro && index === 0 ? <div className="co-intro">{offer.intro}</div> : null}
+                        {offer.intro && index === 0 ? <div className="co-desc-gap" /> : null}
                         <div>{riga.descrizione}</div>
                       </td>
                       <td className="co-code">{spezzaCodice(riga.disegno)}</td>
