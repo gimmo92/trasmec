@@ -18,6 +18,14 @@ import type { DocumentoFile } from "./types";
 
 let dirOverride: string | null = null;
 
+/** File generali tenuti in un'unica versione: un nuovo caricamento sostituisce il precedente. */
+const SOSTITUISCE_PRECEDENTE: DocumentoFile["kind"][] = [
+  "spare-part-list",
+  "info-spare-parts",
+  "alberi-coclea",
+  "alberi-coclea-spare-parts",
+];
+
 const ALLOWED_EXT = new Set([".pdf", ".xlsx", ".xlsm", ".xls", ".dwg", ".csv"]);
 
 /** Cartella documenti sul disco del progetto (non il mirror in /tmp). */
@@ -222,7 +230,7 @@ export async function saveDocumento(
     { name, full, size: stat.size, mtimeMs: stat.mtimeMs },
   ]);
   const meta = cachedKind(name, stat.size, stat.mtimeMs) ?? kindFromName(name);
-  if (meta.kind === "spare-part-list" || meta.kind === "info-spare-parts") {
+  if (SOSTITUISCE_PRECEDENTE.includes(meta.kind)) {
     const kind = meta.kind;
     const previous = collectFiles().filter((file) => {
       if (file.name === name) return false;

@@ -78,6 +78,8 @@ export interface DocumentoFile {
     | "spare-part-list"
     | "info-spare-parts"
     | "calcolo-catena"
+    | "alberi-coclea"
+    | "alberi-coclea-spare-parts"
     | "ypri"
     | "template"
     | "altro";
@@ -97,6 +99,8 @@ export const DOC_KIND_LABEL: Record<DocumentoFile["kind"], string> = {
   "spare-part-list": "spare part list",
   "info-spare-parts": "info spare parts",
   "calcolo-catena": "calcolo costo catene",
+  "alberi-coclea": "alberi coclea",
+  "alberi-coclea-spare-parts": "alberi coclea spare parts",
   ypri: "listini YPRI",
   template: "template",
   altro: "da verificare",
@@ -107,6 +111,8 @@ export const FILE_GENERALI: DocumentoFile["kind"][] = [
   "spare-part-list",
   "info-spare-parts",
   "calcolo-catena",
+  "alberi-coclea",
+  "alberi-coclea-spare-parts",
   "ypri",
 ];
 

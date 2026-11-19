@@ -22,7 +22,7 @@ interface CacheEntry extends ClassifiedDoc {
 }
 
 /** Va alzato quando cambiano le regole, così i file già visti vengono riclassificati. */
-const CACHE_VERSION = 9;
+const CACHE_VERSION = 11;
 
 const DATA_FILE = path.join(process.cwd(), "data", "classificazione.json");
 const CLOUD_PATH = "config/classificazione.json";
@@ -34,11 +34,20 @@ function orderCodes(text: string): string[] {
   return parseOrderText(text).includedItems.map((item) => item.code);
 }
 
-/** Spare part list, info spare parts, calcolo costo catene: valgono per tutte le offerte. */
+/** Spare part list, info spare parts, calcolo costo catene, alberi coclea: valgono per tutte le offerte. */
 export function generaleKindFromText(
   text: string
-): "spare-part-list" | "info-spare-parts" | "calcolo-catena" | null {
+):
+  | "spare-part-list"
+  | "info-spare-parts"
+  | "calcolo-catena"
+  | "alberi-coclea"
+  | "alberi-coclea-spare-parts"
+  | null {
   const n = text.toLowerCase().replace(/[_-]+/g, " ");
+  if (/\balber[io]\s+(?:della\s+|per\s+)?cocle[ae]\b/.test(n)) {
+    return /\bspare\s*parts?\b/.test(n) ? "alberi-coclea-spare-parts" : "alberi-coclea";
+  }
   if (/\bcalcolo\s+(?:(?:del\s+)?cost[oi]\s+|della\s+)?caten[ae]\b|\bchain\s*calc\b/.test(n)) {
     return "calcolo-catena";
   }

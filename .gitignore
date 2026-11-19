@@ -35,3 +35,8 @@ next-env.d.ts
 /data/archivio.json
 /data/disegni.json
 /data/storico.json
+
+# bozze non finite
+/src/lib/ordini.ts
+/src/app/api/ordini/
+/data/ordini.json
