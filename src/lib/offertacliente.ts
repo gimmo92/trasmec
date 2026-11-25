@@ -602,15 +602,15 @@ Regole:
 - Se c'è la sezione "RICHIESTA DI QUESTO TICKET", i pezzi vengono SOLO da lì. Il CONTESTO serve a capire macchina, matricola e cliente, non aggiunge pezzi.
 - Ruote dentate / sprockets / settori: drive end = "Settori lato comando", return end / tail = "Settori lato rinvio". Se non è indicato il lato, usa entrambe le voci.
 - cliente è il nome dell'azienda del cliente (es. dal dominio mail o dalla firma), non un reparto o una casella mail; attenzione è la persona che scrive. Mai Trasmec.
-- Se ci sono foto, cerca la targhetta Trasmec: macchina = MACHINE TYPE (es. TK40PNZV), matricola = SERIAL NUMBER (es. BC1438C-R007446). Trascrivi esattamente; se un carattere non si legge, lascia il campo vuoto. Senza targhetta, macchina è il modello Trasmec scritto nella mail (es. TK40, TM 75 CLC), se c'è.
+- Se ci sono foto, cerca la targhetta Trasmec: macchina = MACHINE TYPE (es. TK99PNZV), matricola = SERIAL NUMBER (es. AX1234C-R009999). Trascrivi esattamente; se un carattere non si legge, lascia il campo vuoto. Senza targhetta, macchina è il modello Trasmec scritto nella mail (es. TK99, TM 99 CLC), se c'è.
 - Per ruote dentate / sprockets / settori scrivi nella descrizione anche i denti come "Z=10" se il cliente li indica.
 - rdo è il numero della richiesta d'offerta del cliente, solo se scritto (es. "RdO 4500123"). Mai il numero ticket.
 DOCUMENTI PDF (scansioni)
-- I documenti del CLIENTE (es. pagina "Identificazione" del manuale Trasmec) dicono cosa vuole: il cliente spesso evidenzia le righe dei pezzi e corregge a penna. Un valore barrato è sostituito da quello scritto a mano (es. quantità catena 101,2 barrata e "60 m" a mano = 60 metri); "2 X" a mano accanto a una ruota = 2 pezzi.
+- I documenti del CLIENTE (es. pagina "Identificazione" del manuale Trasmec) dicono cosa vuole: il cliente spesso evidenzia le righe dei pezzi e corregge a penna. Un valore barrato è sostituito da quello scritto a mano (es. quantità catena 80 barrata e "45 m" a mano = 45 metri); "3 X" a mano accanto a una ruota = 3 pezzi.
 - I documenti TRASMEC (distinta storica della commessa, disegni) servono solo a completare i dati tecnici dei pezzi chiesti (disegni, maglia, materiale, raschiante, passi): non aggiungono pezzi.
-- macchina = codice macchina come scritto (es. TK 30 HPDo, TK30"HPDo). matricola = commessa-disegno (es. AA1107C-R002386: commessa AA1107C, disegno/layout R002386; sulle targhette nuove SERIAL NUMBER BC1438C-R007446). commessa = solo la commessa (AA1107C). sn = numero di matricola progressivo con l'anno delle macchine vecchie (es. "2299/2000"), vuoto se non c'è.
-- tipo "settori" per ruote dentate / sprockets / ingranaggi a settori: lato comando (drive, traino, motrice) o rinvio (return, tail), z = denti, passo = passo catena in mm (es. 142), disegno = disegno della ruota (es. R001324). Un pezzo per lato.
-- tipo "catena" per la catena di trasporto / raschiante: quantita = metri chiesti, maglia (es. 14226), materiale della maglia (es. CN, MN), passoAttrezzatura = passo dei raschianti in mm (es. P=426 → 426), raschiante = baffo/catenaria (es. 760/100x10 R), disegno = disegno della catena (es. R001788ST).
+- macchina = codice macchina come scritto (es. TK 99 HPx, TK99"HPx). matricola = commessa-disegno (es. AX1234C-R009999: commessa AX1234C, disegno/layout R009999; sulle targhette nuove è il SERIAL NUMBER). commessa = solo la commessa (AX1234C). sn = numero di matricola progressivo con l'anno delle macchine vecchie (es. "1234/1999"), vuoto se non c'è.
+- tipo "settori" per ruote dentate / sprockets / ingranaggi a settori: lato comando (drive, traino, motrice) o rinvio (return, tail), z = denti, passo = passo catena in mm (es. 999), disegno = disegno della ruota (es. R009991). Un pezzo per lato.
+- tipo "catena" per la catena di trasporto / raschiante: quantita = metri chiesti, maglia (es. 99999), materiale della maglia (sigla accanto alla maglia, es. XX), passoAttrezzatura = passo dei raschianti in mm (es. P=999 → 999), raschiante = baffo/catenaria (es. 500/80x8 R), disegno = disegno della catena (es. R009990ST).
 - Campi tecnici che non trovi: stringa vuota. Non inventarli.`,
     prompt: `MAIL
 ${corpus.slice(0, 14000)}
@@ -768,7 +768,7 @@ Rispondi solo con JSON: {"righe":[{"pos":"01","descrizione":"..."}]}
 Regole:
 - Includi solo le righe la cui descrizione non è già in ${nome}.
 - MAIUSCOLO, conciso, terminologia tecnica corretta (es. SPROCKET, BEARING, SUPPORT, SCREW FLIGHT, CHAIN).
-- Non cambiare codici, sigle, modelli, misure, numeri e unità (es. TM 75 CLC, UCFL208, Ø323/168, P142).
+- Non cambiare codici, sigle, modelli, misure, numeri e unità (es. TM 99 CLC, UCFL999, Ø999/111, P999).
 - Non aggiungere informazioni.`,
       prompt: JSON.stringify(righe.map(({ pos, descrizione }) => ({ pos, descrizione }))),
       maxTokens: 3000,
