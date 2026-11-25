@@ -341,11 +341,17 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
       setError("Seleziona un'offerta prima di generarla.");
       return;
     }
+    // Se c'è già un'offerta per questo ordine (caricata o nello storico), la nuova la sostituisce.
+    const orderDoc = ordini.find((doc) => doc.path === orderPath);
+    const previousId =
+      savedIdRef.current ??
+      history.find(
+        (row) => row.sourceFile && (row.sourceFile === orderPath || row.sourceFile === orderDoc?.name)
+      )?.id ??
+      null;
     setGenerating(true);
     setError(null);
     setOffer(null);
-    setSavedId(null);
-    savedIdRef.current = null;
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
@@ -362,7 +368,13 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
       if (next.header.customerCode) setCustomerCode(next.header.customerCode);
       setOffer(next);
       try {
-        await persistOffer(next, null);
+        try {
+          await persistOffer(next, previousId);
+        } catch (err) {
+          // Offerta precedente non più nello storico (es. eliminata altrove): se ne crea una nuova.
+          if (!previousId) throw err;
+          await persistOffer(next, null);
+        }
       } catch (err) {
         setError(
           err instanceof Error
@@ -375,7 +387,7 @@ export default function GestioneOfferte({ active = true }: { active?: boolean })
     } finally {
       setGenerating(false);
     }
-  }, [orderPath, selected, customerCode, persistOffer]);
+  }, [orderPath, selected, customerCode, persistOffer, ordini, history]);
 
   const removeLine = useCallback(
     (itemCode: string, kind: LineKind, index: number) => {

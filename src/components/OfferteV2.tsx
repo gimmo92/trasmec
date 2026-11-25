@@ -240,6 +240,8 @@ export default function OfferteV2() {
   const genera = async () => {
     setGenerating(true);
     setError(null);
+    // La nuova offerta sostituisce quella mostrata: niente bozza vecchia durante o dopo un errore.
+    setOffer(null);
     try {
       const body = new FormData();
       if (mail?.msg) {
