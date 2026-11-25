@@ -35,6 +35,10 @@ interface Catalogo {
   tipologie: Map<string, string>;
   perTipologia: Map<string, string[]>;
   disegni: Map<string, string>;
+  /** Descrizione d'acquisto (foglio costi del template): es. SETTORE Z=10 P260 CEMENTATO E TEMPRATO 16MNCR5 SP.22. */
+  descrAcquisto: Map<string, string>;
+  /** Maglie Attrezzate: trasportatore (TK40PNZ) → passo catena (26040 → 260). */
+  passi: Map<string, string>;
   /** Blocchi del foglio KIT SETTORI, per codice kit. */
   blocchi: Map<string, { settoreCode: string; settoreDesc: string; settori: number; bulloneria: KitComponente[] }>;
 }
@@ -74,7 +78,14 @@ function findDoc(test: (name: string, kind: string) => boolean): string | null {
 }
 
 function readSpareList(file: string, out: Catalogo) {
-  const wb = XLSX.readFile(file, { sheets: ["Listino-Codici", "KIT SETTORI"] });
+  const wb = XLSX.readFile(file, { sheets: ["Listino-Codici", "KIT SETTORI", "Maglie Attrezzate"] });
+
+  // Maglie Attrezzate: Trasportatore | Tipologia Maglia → passo dalle prime 3 cifre della maglia.
+  for (const row of rowsOf(wb, "Maglie Attrezzate")) {
+    const modello = (row[0] ?? "").replace(/\s+/g, "").toUpperCase();
+    const maglia = (row[1] ?? "").match(/^(\d{3})\d{2}\b/);
+    if (/^TKK?\d/.test(modello) && maglia && !out.passi.has(modello)) out.passi.set(modello, maglia[1]);
+  }
 
   for (const row of rowsOf(wb, "Listino-Codici")) {
     const code = row[3];
@@ -161,6 +172,8 @@ function readDrawings(file: string, out: Catalogo) {
     const art = (row[colArt] ?? "").toUpperCase();
     const draw = row[colDraw] ?? "";
     if (art && /[A-Z0-9]{3,}/i.test(draw) && !out.disegni.has(art)) out.disegni.set(art, draw);
+    const descr = row.slice(colArt + 1, colDraw).filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+    if (art && descr && !out.descrAcquisto.has(art)) out.descrAcquisto.set(art, descr);
   }
 }
 
@@ -175,6 +188,8 @@ function catalogo(): Catalogo {
     tipologie: new Map(),
     perTipologia: new Map(),
     disegni: new Map(),
+    descrAcquisto: new Map(),
+    passi: new Map(),
     blocchi: new Map(),
   };
   if (spare) {
@@ -210,6 +225,64 @@ function disegnoDi(cat: Catalogo, code: string): string {
 }
 
 /**
+ * Descrizione dal foglio costi: per i codici verniciati (-V) quella del grezzo con VERNICIATO
+ * dopo la misura (SETTORE Z=10 P260 VERNICIATO CEMENTATO E TEMPRATO 16MNCR5 SP.22).
+ */
+function descrizioneAcquisto(cat: Catalogo, code: string): string {
+  const upper = code.toUpperCase();
+  const own = cat.descrAcquisto.get(upper);
+  if (own) return own;
+  if (!/-V$/.test(upper)) return "";
+  const base = cat.descrAcquisto.get(upper.replace(/-V$/, ""));
+  if (!base) return "";
+  return /VERNICIAT/i.test(base) ? base : base.replace(/(\bP\s*=?\s*\d+)/i, "$1 VERNICIATO");
+}
+
+/**
+ * Il settore dell'altro lato (Z ↔ R, stessi denti e passo) è lo stesso pezzo: se un lato non ha
+ * descrizione o disegno nel foglio costi, si usano quelli del gemello con la lettera scambiata
+ * (SETTORE Z=10 → SETTORE R=10, disegno TK10Z260 → TK10R260).
+ */
+function gemello(code: string, leggi: (twin: string) => string): string {
+  const spec = code.toUpperCase().match(/^SETTORE-([ZR])(\d+)-P(\d+)(.*)$/);
+  if (!spec) return "";
+  const [, lato, z, passo, resto] = spec;
+  const altro = lato === "Z" ? "R" : "Z";
+  const valore = leggi(`SETTORE-${altro}${z}-P${passo}${resto}`);
+  if (!valore) return "";
+  return valore
+    .replace(new RegExp(`\\b${altro}\\s*=\\s*${z}\\b`, "g"), `${lato}=${z}`)
+    .replace(new RegExp(`(\\d)${altro}(${passo})\\b`, "g"), `$1${lato}$2`);
+}
+
+/**
+ * Passo catena dal modello del trasportatore (es. TK40PNZV → TK40PNZ → maglia 26040 → 260),
+ * dal foglio Maglie Attrezzate della Spare Parts List. Vale il modello più lungo che combacia.
+ */
+export function passoDaModello(modello: string): string {
+  const key = modello.replace(/\s+/g, "").toUpperCase().replace(/^TC(?=\d)/, "TK");
+  let best = "";
+  let passo = "";
+  for (const [nome, p] of catalogo().passi) {
+    if (key.startsWith(nome) && nome.length > best.length) {
+      best = nome;
+      passo = p;
+    }
+  }
+  return passo;
+}
+
+/** Passi per cui esiste un kit settori per quel lato e quei denti (per scegliere se è uno solo). */
+export function passiKit(lato: RuotaSettori["lato"], z: number): string[] {
+  const prefix = `KIT-SET-${lato === "comando" ? "Z" : "R"}${String(z).padStart(2, "0")}-P`;
+  const out = new Set<string>();
+  for (const code of [...catalogo().blocchi.keys(), ...catalogo().descrizioni.keys()]) {
+    if (code.startsWith(prefix)) out.add(code.slice(prefix.length));
+  }
+  return [...out];
+}
+
+/**
  * Kit settori per una ruota della distinta: KIT-SET-{Z|R}{z}-P{passo}.
  * Componenti: il settore verniciato SETTORE-{Z|R}{z}-P{passo}-V se è a listino (altrimenti quello
  * del foglio KIT SETTORI) e il kit bulloneria KB-… se è a listino (altrimenti viti, rondelle e dadi del foglio).
@@ -232,10 +305,12 @@ export function kitPerRuota(ruota: RuotaSettori, passo: string): KitSettori | nu
       code: settoreCode,
       descrizione:
         descrizioneListino(settoreCode) ||
+        descrizioneAcquisto(cat, settoreCode) ||
+        gemello(settoreCode, (twin) => descrizioneAcquisto(cat, twin)) ||
         (settoreCode === blocco?.settoreCode ? blocco.settoreDesc : "") ||
         `SETTORE ${lato}=${z} P${passo} VERNICIATO`,
       qty: settoriPerKit,
-      disegno: disegnoDi(cat, settoreCode),
+      disegno: disegnoDi(cat, settoreCode) || gemello(settoreCode, (twin) => disegnoDi(cat, twin)),
     },
   ];
 

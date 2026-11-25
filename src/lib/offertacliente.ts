@@ -1,7 +1,7 @@
 import path from "node:path";
 import { leggiMsg, MAX_MAIL_BODY } from "./msgmail";
 import { askClaude, isApiKeyConfigured } from "./anthropic";
-import { assiemeDaListino, kitPerRuota, type KitComponente } from "./kitsettori";
+import { assiemeDaListino, kitPerRuota, passiKit, passoDaModello, type KitComponente } from "./kitsettori";
 import { getIstruzioni } from "./istruzioni";
 import { extractPdfTextFromBuffer } from "./orderpdf";
 import type { DistintaComponent, DistintaFile, DistintaSection, RuotaSettori, SourceHit } from "./sorgente";
@@ -34,7 +34,16 @@ interface LetturaMail {
   commessa?: string;
   matricola?: string;
   rdo?: string;
+  /** Modello della macchina Trasmec (dalla targhetta in foto o dal testo), es. TK40PNZV. */
+  macchina?: string;
   pezzi?: { descrizione?: string; quantita?: number; voci?: string[] }[];
+}
+
+/** Foto allegata alla mail (es. targhetta della macchina). */
+export interface ImmagineMail {
+  name: string;
+  type: string;
+  data: Uint8Array;
 }
 
 export interface OffertaRiga {
@@ -180,6 +189,25 @@ export function pdfDaEml(raw: string): AllegatoMail[] {
   return out;
 }
 
+/** Foto delle .eml (JPEG/PNG in base64): solo quelle abbastanza grandi da non essere loghi. */
+export function immaginiDaEml(raw: string): ImmagineMail[] {
+  const out: ImmagineMail[] = [];
+  const headerRe = /(?:^|\r?\n)((?:Content-[A-Za-z-]+:[^\r\n]*(?:\r?\n[ \t][^\r\n]*)*\r?\n)+)\r?\n/g;
+  for (const match of raw.matchAll(headerRe)) {
+    const headers = match[1].replace(/\r?\n[ \t]+/g, " ");
+    const type = headers.match(/content-type:\s*(image\/(?:jpeg|jpg|png))/i)?.[1]?.toLowerCase();
+    if (!type || !/content-transfer-encoding:\s*base64/i.test(headers)) continue;
+    const name = headers.match(/filename\*?="?([^";\r\n]+)"?/i)?.[1] ?? headers.match(/name="?([^";\r\n]+)"?/i)?.[1] ?? "foto";
+    const start = (match.index ?? 0) + match[0].length;
+    const end = raw.indexOf("\n--", start);
+    const data = Buffer.from(raw.slice(start, end < 0 ? raw.length : end).replace(/\s/g, ""), "base64");
+    // Sotto 60 KB sono loghi della firma; sopra 3,5 MB Claude non le accetta.
+    if (data.length < 60 * 1024 || data.length > 3.5 * 1024 * 1024) continue;
+    out.push({ name, type: type === "image/png" ? "image/png" : "image/jpeg", data });
+  }
+  return out.sort((a, b) => b.data.length - a.data.length).slice(0, 3);
+}
+
 /** Limite per allegato: i manuali da diversi MB non sono richieste d'offerta. */
 const MAX_ALLEGATO = 2 * 1024 * 1024;
 
@@ -207,6 +235,11 @@ async function testoAllegati(
     }
     if (/spare parts offer|offer number|\bIT\d{5}SPO\d+/i.test(text)) {
       scartati.push(`${allegato.name} (offerta Trasmec)`);
+      continue;
+    }
+    // Moduli anagrafica fornitore (dati bancari di Trasmec): non dicono niente su cliente e pezzi.
+    if (/new supplier|supplier name|vendor (?:registration|form)|anagrafica fornitor/i.test(`${allegato.name}\n${text.slice(0, 3000)}`)) {
+      scartati.push(`${allegato.name} (modulo fornitore)`);
       continue;
     }
     if (text.length < 20) {
@@ -504,7 +537,8 @@ function sectionsFromVoci(sections: DistintaSection[], voci: string[]): Distinta
 async function interpretMail(
   corpus: string,
   sections: DistintaSection[],
-  distinta?: DistintaFile
+  distinta?: DistintaFile,
+  immagini: ImmagineMail[] = []
 ): Promise<LetturaMail> {
   const enabled = sections.filter((section) => section.enabled).slice(0, 40);
   const ruote = (distinta?.ruoteSettori ?? []).map(
@@ -516,7 +550,7 @@ async function interpretMail(
   const text = await askClaude({
     system: `Sei l'ufficio ricambi Trasmec. Leggi la mail del cliente e capisci per quali pezzi va fatta l'offerta.
 Rispondi solo con JSON:
-{"cliente":"","indirizzo":[],"attenzione":"","commessa":"","matricola":"","rdo":"","pezzi":[{"descrizione":"","quantita":1,"voci":["titolo distinta"]}]}
+{"cliente":"","indirizzo":[],"attenzione":"","commessa":"","matricola":"","macchina":"","rdo":"","pezzi":[{"descrizione":"","quantita":1,"voci":["titolo distinta"]}]}
 Regole:
 - Un pezzo per ogni componente chiesto, con la quantità scritta dal cliente (es. "1 pc" = 1).
 - "voci" sono titoli ESATTI dell'elenco distinta, se presente. Esempio: screw flight / spira / elica = Spire. Se l'elenco manca, "voci" è [].
@@ -524,13 +558,20 @@ Regole:
 - Il testo è solo la richiesta del cliente: non ricavare codici disegno, prezzi o giorni di consegna da un'offerta già inviata.
 - Se c'è la sezione "RICHIESTA DI QUESTO TICKET", i pezzi vengono SOLO da lì. Il CONTESTO serve a capire macchina, matricola e cliente, non aggiunge pezzi.
 - Ruote dentate / sprockets / settori: drive end = "Settori lato comando", return end / tail = "Settori lato rinvio". Se non è indicato il lato, usa entrambe le voci.
-- cliente è il nome dell'azienda del cliente (es. dal dominio mail o dalla firma), non un reparto o una casella mail; attenzione è la persona che scrive. Mai Trasmec.`,
+- cliente è il nome dell'azienda del cliente (es. dal dominio mail o dalla firma), non un reparto o una casella mail; attenzione è la persona che scrive. Mai Trasmec.
+- Se ci sono foto, cerca la targhetta Trasmec: macchina = MACHINE TYPE (es. TK40PNZV), matricola = SERIAL NUMBER (es. BC1438C-R007446). Trascrivi esattamente; se un carattere non si legge, lascia il campo vuoto. Senza targhetta, macchina è il modello Trasmec scritto nella mail (es. TK40, TM 75 CLC), se c'è.
+- Per ruote dentate / sprockets / settori scrivi nella descrizione anche i denti come "Z=10" se il cliente li indica.
+- rdo è il numero della richiesta d'offerta del cliente, solo se scritto (es. "RdO 4500123"). Mai il numero ticket.`,
     prompt: `MAIL
 ${corpus.slice(0, 14000)}
 
 VOCI DISTINTA ATTIVE
-${catalog}`,
+${catalog}${immagini.length ? `\n\nFOTO ALLEGATE: ${immagini.map((image) => image.name).join(", ")}` : ""}`,
     maxTokens: 1500,
+    images: immagini.map((image) => ({
+      data: image.data,
+      mediaType: image.type === "image/png" ? "image/png" : "image/jpeg",
+    })),
   });
   return extractJson(text);
 }
@@ -619,7 +660,7 @@ const GLOSSARIO: [RegExp, string][] = [
   [/\bSETTORE\b/g, "SECTOR"],
   [/\bSETTORI\b/g, "SECTORS"],
   [/\bVERNICIAT[OAIE]\b/g, "PAINTED"],
-  [/\bCEMENTATO E TEMPRATO\b/g, "CASE HARDENED AND TEMPERED"],
+  [/\bCEMENTATO E TEMPRATO\b/g, "CASE HARDENED AND HARDENED"],
   [/\bVITE TE\b/g, "HEX HEAD SCREW"],
   [/\bRONDELLA PIANA\b/g, "FLAT WASHER"],
   [/\bDADO AUTOBLOCCANTE\b/g, "SELF-LOCKING NUT"],
@@ -701,6 +742,70 @@ function ruoteRichieste(richiesta: RichiestaRiga, distinta?: DistintaFile): Ruot
   const rinvio = /return|rinvio|tail|tension/.test(text);
   if (comando === rinvio) return ruote;
   return ruote.filter((ruota) => (ruota.lato === "comando" ? comando : rinvio));
+}
+
+/** Ultima risorsa per il nome cliente: il dominio di chi scrive (kronospan-riga.lv → KRONOSPAN RIGA). */
+function aziendaDaDominio(text: string): string {
+  const generici = /^(gmail|outlook|hotmail|yahoo|libero|live|icloud|tiscali|virgilio|alice|gmx|mail|aol)$/i;
+  for (const match of text.matchAll(/[\w.+-]+@([\w-]+(?:\.[\w-]+)+)/g)) {
+    const parti = match[1].toLowerCase().split(".");
+    const nome = parti.length > 2 ? parti[parti.length - 2] : parti[0];
+    if (/trasmec|jitbit/.test(match[1]) || generici.test(nome)) continue;
+    return nome.replace(/[-_]+/g, " ").toUpperCase();
+  }
+  return "";
+}
+
+/**
+ * "Offer req.": il numero di RdO del cliente se c'è, altrimenti l'oggetto originale della sua mail
+ * (senza Fwd/FW/RE e senza il numero ticket). Il ticket va già in "Internal ref.".
+ */
+function richiestaOfferta(rdo: string, ticket: string, subject: string): string {
+  const numero = rdo.trim();
+  if (numero && numero !== ticket) return numero;
+  let oggetto = subject;
+  let prima = "";
+  while (prima !== oggetto) {
+    prima = oggetto;
+    oggetto = oggetto.replace(/^\s*(?:(?:fwd?|fw|re|r|i|aw|wg|tr|rif)\s*:|\{\d+\}\s*:?|\[[^\]]*\]\s*:?)\s*/i, "");
+  }
+  return oggetto.trim() || numero;
+}
+
+/** Modello di trasportatore Trasmec scritto nella mail (es. "TK40 conveyor", "TK 40 PNZ"). */
+function modelloNelTesto(text: string): string {
+  const match = text.match(/\bT[KC]K?\s*(\d{2})\s*(PNZ\s*V?|HP|N)?\b/i);
+  return match ? `TK${match[1]}${(match[2] ?? "").replace(/\s+/g, "")}`.toUpperCase() : "";
+}
+
+/**
+ * Ruote richieste senza distinta: denti da "z=10" / "Z10" / "10 teeth" e lato da
+ * drive/comando o return/rinvio (entrambi i lati se non è detto). Settori sconosciuti (0).
+ */
+function ruoteDaTesto(richiesta: RichiestaRiga): RuotaSettori[] {
+  const text = norm(richiesta.componente);
+  if (!/settor|sector|sprocket|ruot[ae] dentat|ruota portasettori|ingranagg/.test(text)) return [];
+  const z = Number(
+    text.match(/\bz\s*=?\s*(\d{1,2})\b/)?.[1] ?? text.match(/\b(\d{1,2})\s*(?:teeth|denti)\b/)?.[1] ?? 0
+  );
+  if (!z) return [];
+  const comando = /drive|comando|motric|head/.test(text);
+  const rinvio = /return|rinvio|tail|tension/.test(text);
+  const lati: RuotaSettori["lato"][] = comando === rinvio ? ["comando", "rinvio"] : [comando ? "comando" : "rinvio"];
+  return lati.map((lato) => ({ lato, z, settori: 0 }));
+}
+
+/**
+ * Passo catena per il kit: dal modello (Maglie Attrezzate: TK40PNZ → 26040 → 260), da "P260" nella
+ * richiesta, oppure l'unico passo a listino per quel lato e quei denti.
+ */
+function passoPerRuota(ruota: RuotaSettori, modello: string, testo: string): string {
+  const daModello = modello ? passoDaModello(modello) : "";
+  if (daModello) return daModello;
+  const scritto = testo.match(/\bP\s*=?\s*(\d{3})\b/i)?.[1];
+  if (scritto) return scritto;
+  const passi = passiKit(ruota.lato, ruota.z);
+  return passi.length === 1 ? passi[0] : "";
 }
 
 /** Riga kit (con prezzo = somma dei componenti a listino) e sottorighe .1, .2 … senza prezzo. */
@@ -806,6 +911,8 @@ export async function buildOffertaCliente(input: {
   sorgenti?: SorgenteCaricato[];
   /** PDF allegati alla mail (dal browser, per le .msg). Quelli delle .eml si leggono qui. */
   allegati?: AllegatoMail[];
+  /** Foto allegate alla mail (dal browser, per le .msg). Quelle delle .eml si leggono qui. */
+  immagini?: ImmagineMail[];
   /** Codice cliente YPRI: coefficienti e sconto del cliente. */
   codiceCliente?: string;
   /** Chi emette l'offerta (operatore Trasmec). */
@@ -857,7 +964,8 @@ export async function buildOffertaCliente(input: {
   if (!manual.length && corpus.trim().length > 40) {
     try {
       if (!isApiKeyConfigured()) throw new Error("API key mancante");
-      lettura = await interpretMail(corpus, prelim?.distinte[0]?.sections ?? [], prelim?.distinte[0]);
+      const immagini = [...(input.immagini ?? []), ...(input.emailRaw ? immaginiDaEml(input.emailRaw) : [])].slice(0, 3);
+      lettura = await interpretMail(corpus, prelim?.distinte[0]?.sections ?? [], prelim?.distinte[0], immagini);
     } catch (err) {
       claudeError = err instanceof Error ? err.message : String(err);
     }
@@ -910,19 +1018,30 @@ export async function buildOffertaCliente(input: {
     lingua,
   };
   let group = 1;
+  // Modello macchina: distinta, targhetta in foto o testo della mail (serve al passo catena).
+  const modelloMacchina = distinta?.meta?.macchina || lettura?.macchina?.trim() || modelloNelTesto(corpus);
   for (const richiesta of richieste) {
     // Ruote dentate / settori: kit di listino ricavati da ruota (z, lato) e passo catena.
+    // Senza distinta, denti e lato vengono dalla richiesta e il passo dal modello della macchina.
     const ruote = ruoteRichieste(richiesta, distinta);
-    if (ruote.length) {
-      for (const ruota of ruote) {
-        const kit = kitPerRuota(ruota, distinta?.passoCatena ?? "");
+    const daTesto = !ruote.length && !distinta?.ruoteSettori?.length ? ruoteDaTesto(richiesta) : [];
+    if (ruote.length || daTesto.length) {
+      for (const ruota of ruote.length ? ruote : daTesto) {
+        const passo = distinta?.passoCatena || passoPerRuota(ruota, modelloMacchina, richiesta.componente);
+        const kit = kitPerRuota(ruota, passo);
         if (!kit) {
           avvisi.push(
-            `Settori lato ${ruota.lato} z=${ruota.z}${distinta?.passoCatena ? ` P${distinta.passoCatena}` : ": passo catena non trovato"}: nessun kit a listino.`
+            `Settori lato ${ruota.lato} z=${ruota.z}${passo ? ` P${passo}: nessun kit a listino.` : ": passo catena non trovato (manca il modello della macchina o la distinta)."}`
           );
           continue;
         }
-        const kits = Math.ceil(ruota.settori / kit.settoriPerKit) * (richiesta.quantita ?? 1);
+        if (!distinta?.passoCatena && modelloMacchina) {
+          avvisi.push(`Kit settori lato ${ruota.lato}: passo P${passo} dal modello ${modelloMacchina} (foglio Maglie Attrezzate).`);
+        }
+        // Senza distinta non si sa quanti settori ha la ruota: un kit per ruota richiesta.
+        const kits = ruota.settori
+          ? Math.ceil(ruota.settori / kit.settoriPerKit) * (richiesta.quantita ?? 1)
+          : richiesta.quantita ?? 1;
         pushKit(righe, group, giorni, kit, kits, prezzi);
         group += 1;
       }
@@ -931,7 +1050,8 @@ export async function buildOffertaCliente(input: {
 
     // Codice o modello Trasmec presente nella Spare Parts List (es. C003369, TM 75 CLC):
     // la riga si compone dal listino, anche senza distinta.
-    const testoRiga = [richiesta.componente, ...(richiesta.voci ?? [])].join(" ");
+    // Il modello della macchina (targhetta, testo) aiuta a trovare il pezzo nel listino.
+    const testoRiga = [richiesta.componente, ...(richiesta.voci ?? []), modelloMacchina].join(" ");
     const daListino = /\b[A-Z]{1,6}\d{3,}|\bTM\s*\d{2,3}\b/i.test(testoRiga)
       ? await assiemeDaListino(testoRiga)
       : null;
@@ -1014,7 +1134,7 @@ export async function buildOffertaCliente(input: {
   }
 
   const meta = distinta?.meta;
-  const macchina = meta?.macchina || "";
+  const macchina = meta?.macchina || lettura?.macchina?.trim().toUpperCase() || "";
   const matricola =
     meta?.matricola || lettura?.matricola || input.commessa || matricole[0] || "";
   const intro = [macchina ? `SPARE PARTS FOR ${macchina}` : "SPARE PARTS", matricola]
@@ -1028,7 +1148,7 @@ export async function buildOffertaCliente(input: {
     numero: ticket ? `BOZZA ${ticket}` : "BOZZA",
     data: formatDate(now),
     validita: formatDate(valid),
-    clienteNome: lettura?.cliente || party.nome || meta?.cliente || "",
+    clienteNome: lettura?.cliente || party.nome || meta?.cliente || aziendaDaDominio(email.text),
     clienteIndirizzo: lettura?.indirizzo?.filter(Boolean).length
       ? (lettura.indirizzo ?? []).filter(Boolean)
       : party.indirizzo,
@@ -1036,7 +1156,7 @@ export async function buildOffertaCliente(input: {
     incoterm: INCITERM,
     redattore: (input.redattore ?? "").trim(),
     rifInterno: ticket,
-    rdo: lettura?.rdo || rdo,
+    rdo: richiestaOfferta(lettura?.rdo || rdo, ticket, email.subject),
     attenzione: lettura?.attenzione || attentionOf(corpus, party.attenzione),
     pagamento: PAGAMENTO,
     imballo: IMBALLO,

@@ -4,6 +4,7 @@ import {
   textFromMailParts,
   textFromMsg,
   type AllegatoMail,
+  type ImmagineMail,
 } from "@/lib/offertacliente";
 import { prepareApp } from "@/lib/prepare";
 import type { SorgenteCaricato } from "@/lib/sorgente";
@@ -57,7 +58,16 @@ export async function POST(req: NextRequest) {
       if (item instanceof File) allegati.push({ name: item.name, data: new Uint8Array(await item.arrayBuffer()) });
     }
 
+    // Foto allegate alle .msg (es. targhetta della macchina), già ridotte nel browser.
+    const immagini: ImmagineMail[] = [];
+    for (const item of form.getAll("immagine")) {
+      if (item instanceof File) {
+        immagini.push({ name: item.name, type: item.type || "image/jpeg", data: new Uint8Array(await item.arrayBuffer()) });
+      }
+    }
+
     const offer = await buildOffertaCliente({
+      immagini,
       emailRaw,
       email: mailLetta,
       commessa,

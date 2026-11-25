@@ -31,13 +31,28 @@ export async function askClaude(params: {
   system?: string;
   model?: string;
   maxTokens?: number;
+  /** Immagini da mostrare insieme al prompt (es. foto della targhetta). */
+  images?: { data: Uint8Array; mediaType: "image/jpeg" | "image/png" }[];
 }): Promise<string> {
   const anthropic = getAnthropic();
+  const content: Anthropic.ContentBlockParam[] | string = params.images?.length
+    ? [
+        ...params.images.map((image) => ({
+          type: "image" as const,
+          source: {
+            type: "base64" as const,
+            media_type: image.mediaType,
+            data: Buffer.from(image.data).toString("base64"),
+          },
+        })),
+        { type: "text" as const, text: params.prompt },
+      ]
+    : params.prompt;
   const msg = await anthropic.messages.create({
     model: params.model || DEFAULT_MODEL,
     max_tokens: params.maxTokens ?? 4096,
     system: params.system,
-    messages: [{ role: "user", content: params.prompt }],
+    messages: [{ role: "user", content }],
   });
   return msg.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")

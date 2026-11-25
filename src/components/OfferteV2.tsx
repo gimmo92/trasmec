@@ -14,7 +14,12 @@ interface MailCaricata {
   size: number;
   subject: string;
   /** .msg letto nel browser: si invia questo al posto del file. */
-  msg?: { subject: string; body: string; pdf: { name: string; data: Uint8Array }[] };
+  msg?: {
+    subject: string;
+    body: string;
+    pdf: { name: string; data: Uint8Array }[];
+    immagini?: { name: string; data: Uint8Array; type: string }[];
+  };
 }
 
 /** Codice senza spazi: può andare a capo dopo punti, trattini e barre invece di uscire dalla cella. */
@@ -38,6 +43,22 @@ function isExcel(name: string): boolean {
 
 /** Il server può rispondere con testo semplice (es. file troppo grande): niente JSON.parse alla cieca. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+/** Foto allegata (es. targhetta) ridotta a JPEG ~1600 px: basta per leggerla e resta leggera da inviare. */
+async function rimpicciolisci(data: Uint8Array, type: string): Promise<Blob | null> {
+  try {
+    const bitmap = await createImageBitmap(new Blob([data as BlobPart], { type }));
+    const scala = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scala);
+    canvas.height = Math.round(bitmap.height * scala);
+    canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    return await new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.85));
+  } catch {
+    return null;
+  }
+}
+
 async function leggiRisposta(res: Response): Promise<any> {
   const text = await res.text();
   try {
@@ -226,6 +247,10 @@ export default function OfferteV2() {
         body.append("emailBody", mail.msg.body);
         for (const pdf of mail.msg.pdf) {
           body.append("allegato", new Blob([pdf.data as BlobPart], { type: "application/pdf" }), pdf.name);
+        }
+        for (const foto of mail.msg.immagini ?? []) {
+          const piccola = await rimpicciolisci(foto.data, foto.type);
+          if (piccola) body.append("immagine", piccola, foto.name.replace(/\.\w+$/, ".jpg"));
         }
       } else if (mail) {
         body.append("email", mail.file);
