@@ -546,6 +546,21 @@ interface Prezzi {
   mancanti: Set<string>;
   /** Sconti trovati per il cliente (per avvisare se manca il codice). */
   scontoTrovato: boolean;
+  /** Lingua della mail del cliente: le descrizioni dell'offerta la seguono. */
+  lingua: Lingua;
+}
+
+type Lingua = "en" | "it";
+
+const PAROLE_EN = /\b(the|and|please|offer|quotation|quote|for|of|with|we|you|your|our|need|would|like|kind|regards|dear|spare|parts|send|thank|thanks|price|delivery|following|request)\b/g;
+const PAROLE_IT = /\b(il|lo|la|gli|le|di|del|della|per|con|che|non|vorremmo|richiesta|preventivo|offerta|ricambi|cordiali|saluti|buongiorno|grazie|prezzo|consegna|seguenti|inviare|chiediamo|vostra|nostra|sono|alla|delle)\b/g;
+
+/** Lingua della richiesta del cliente: inglese o italiano (a parità di indizi, inglese). */
+function linguaDi(text: string): Lingua {
+  const t = text.toLowerCase();
+  const en = t.match(PAROLE_EN)?.length ?? 0;
+  const it = t.match(PAROLE_IT)?.length ?? 0;
+  return it > en ? "it" : "en";
 }
 
 /** Prezzo unitario (listino × CTM × maggiorazione) e sconto cliente dal listino YPRI. */
@@ -630,6 +645,49 @@ function inglese(text: string): string {
   return out.replace(/\s+/g, " ").trim();
 }
 
+/** Descrizione di listino (italiano) nella lingua dell'offerta. */
+function inLingua(text: string, lingua: Lingua): string {
+  return lingua === "en" ? inglese(text) : text.toUpperCase().replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Porta tutte le descrizioni nella lingua della mail: distinte e richieste del cliente
+ * possono essere in un'altra lingua. Codici, misure e sigle restano come sono.
+ */
+async function traduciDescrizioni(righe: OffertaRiga[], lingua: Lingua, avvisi: string[]): Promise<void> {
+  if (!righe.length || !isApiKeyConfigured()) return;
+  const nome = lingua === "en" ? "inglese" : "italiano";
+  let risposta: string;
+  try {
+    risposta = await askClaude({
+      system: `Traduci descrizioni di ricambi industriali (trasportatori, coclee, catene, supporti, cuscinetti) in ${nome} tecnico commerciale.
+Rispondi solo con JSON: {"righe":[{"pos":"01","descrizione":"..."}]}
+Regole:
+- Includi solo le righe la cui descrizione non è già in ${nome}.
+- MAIUSCOLO, conciso, terminologia tecnica corretta (es. SPROCKET, BEARING, SUPPORT, SCREW FLIGHT, CHAIN).
+- Non cambiare codici, sigle, modelli, misure, numeri e unità (es. TM 75 CLC, UCFL208, Ø323/168, P142).
+- Non aggiungere informazioni.`,
+      prompt: JSON.stringify(righe.map(({ pos, descrizione }) => ({ pos, descrizione }))),
+      maxTokens: 3000,
+    });
+  } catch (err) {
+    avvisi.push(`Descrizioni non tradotte in ${nome}: ${err instanceof Error ? err.message : String(err)}`);
+    return;
+  }
+  try {
+    const data = jsonObject(risposta);
+    for (const raw of Array.isArray(data.righe) ? data.righe : []) {
+      if (!raw || typeof raw !== "object") continue;
+      const item = raw as Record<string, unknown>;
+      const riga = righe.find((row) => row.pos === String(item.pos ?? ""));
+      const descrizione = typeof item.descrizione === "string" ? item.descrizione.trim() : "";
+      if (riga && descrizione) riga.descrizione = descrizione.toUpperCase();
+    }
+  } catch {
+    avvisi.push(`Descrizioni non tradotte in ${nome}: risposta non valida.`);
+  }
+}
+
 /** Ruote della distinta richieste: dalle voci scelte da Claude o dal testo della riga. */
 function ruoteRichieste(richiesta: RichiestaRiga, distinta?: DistintaFile): RuotaSettori[] {
   const ruote = distinta?.ruoteSettori ?? [];
@@ -675,7 +733,7 @@ function pushKit(
     group,
     null,
     giorni,
-    { articolo: kit.code, descrizione: inglese(kit.descrizione), disegno: "", qty, prezzo, sconto },
+    { articolo: kit.code, descrizione: inLingua(kit.descrizione, prezzi.lingua), disegno: "", qty, prezzo, sconto },
     prezzi
   );
   kit.componenti.forEach((comp, index) => {
@@ -684,7 +742,7 @@ function pushKit(
       group,
       index + 1,
       giorni,
-      { articolo: comp.code, descrizione: inglese(comp.descrizione), disegno: comp.disegno, qty: comp.qty },
+      { articolo: comp.code, descrizione: inLingua(comp.descrizione, prezzi.lingua), disegno: comp.disegno, qty: comp.qty },
       prezzi
     );
   });
@@ -841,7 +899,16 @@ export async function buildOffertaCliente(input: {
 
   const giorni = deliveryDays(corpus);
   const righe: OffertaRiga[] = [];
-  const prezzi: Prezzi = { cliente: (input.codiceCliente ?? "").trim(), mancanti: new Set(), scontoTrovato: false };
+  // La lingua si decide sulla richiesta del cliente, non sulle risposte Trasmec nel thread.
+  const lingua = linguaDi(
+    `${email.subject}\n${richiestaTicket || customerRequest(email.text)}\n${manual.map((row) => row.componente).join("\n")}`
+  );
+  const prezzi: Prezzi = {
+    cliente: (input.codiceCliente ?? "").trim(),
+    mancanti: new Set(),
+    scontoTrovato: false,
+    lingua,
+  };
   let group = 1;
   for (const richiesta of richieste) {
     // Ruote dentate / settori: kit di listino ricavati da ruota (z, lato) e passo catena.
@@ -954,6 +1021,7 @@ export async function buildOffertaCliente(input: {
     .filter(Boolean)
     .join("\n");
 
+  await traduciDescrizioni(righe, lingua, avvisi);
   await applicaIstruzioni(righe, avvisi, prezzi);
 
   return {
@@ -996,7 +1064,7 @@ Rispondi solo con JSON: {"righe":[{"pos":"01","articolo":"...","descrizione":"..
 Regole:
 - Includi solo le righe che cambiano; [] se nessuna istruzione riguarda queste righe.
 - Cambia articolo, descrizione o disegno solo come dicono le istruzioni. Non inventare codici: se un'istruzione richiede dati che non hai, non cambiare niente.
-- Descrizioni in inglese, maiuscole, come nell'offerta.
+- Descrizioni in ${prezzi.lingua === "en" ? "inglese" : "italiano"}, maiuscole, come nell'offerta.
 - Non aggiungere né togliere righe.`,
       prompt: `ISTRUZIONI DELL'OPERATORE
 ${regole}
