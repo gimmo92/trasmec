@@ -33,11 +33,22 @@ export async function askClaude(params: {
   maxTokens?: number;
   /** Immagini da mostrare insieme al prompt (es. foto della targhetta). */
   images?: { data: Uint8Array; mediaType: "image/jpeg" | "image/png" }[];
+  /** PDF da far leggere a Claude (anche scansioni senza testo: li legge come immagini). */
+  documents?: { data: Uint8Array; title?: string }[];
 }): Promise<string> {
   const anthropic = getAnthropic();
-  const content: Anthropic.ContentBlockParam[] | string = params.images?.length
+  const content: Anthropic.ContentBlockParam[] | string = params.images?.length || params.documents?.length
     ? [
-        ...params.images.map((image) => ({
+        ...(params.documents ?? []).map((doc) => ({
+          type: "document" as const,
+          source: {
+            type: "base64" as const,
+            media_type: "application/pdf" as const,
+            data: Buffer.from(doc.data).toString("base64"),
+          },
+          ...(doc.title ? { title: doc.title } : {}),
+        })),
+        ...(params.images ?? []).map((image) => ({
           type: "image" as const,
           source: {
             type: "base64" as const,

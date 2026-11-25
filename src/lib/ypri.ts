@@ -356,6 +356,12 @@ function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+/** Codici articolo del listino YPRI che iniziano con un prefisso (es. "KB-"). */
+export function codiciListino(prefix: string): string[] {
+  const key = normKey(prefix);
+  return [...loadTables().articles.keys()].filter((code) => code.startsWith(key));
+}
+
 /**
  * Prezzo di vendita da codice articolo e, se c'è, codice cliente.
  * Se l'articolo non è in YPRIAI00 restituisce prezzi a 0.

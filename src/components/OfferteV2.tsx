@@ -260,9 +260,13 @@ export default function OfferteV2() {
       body.append("commessa", commessa);
       body.append("codiceCliente", codiceCliente);
       body.append("redattore", redattore);
+      let pesoPdf = 0;
       for (const file of sorgenti) {
-        // Le distinte servono intere; di disegni e PDF basta il nome (niente upload pesanti).
-        if (isExcel(file.name)) body.append("sorgente", file);
+        // Le distinte servono intere, anche quelle PDF scansionate delle matricole vecchie
+        // (Claude le legge); dei disegni basta il nome (niente upload pesanti).
+        const pdf = /\.pdf$/i.test(file.name) && pesoPdf + file.size <= 3 * 1024 * 1024;
+        if (pdf) pesoPdf += file.size;
+        if (isExcel(file.name) || pdf) body.append("sorgente", file);
         else body.append("sorgenteNome", file.name);
       }
       body.append(

@@ -25,6 +25,35 @@ export interface RichiestaRiga {
   quantita: number | null;
   /** Titoli di voce distinta indicati da Claude. */
   voci?: string[];
+  /** Ruota dentata letta dai documenti (lato, denti, passo e disegno specifico della macchina). */
+  ruota?: { lato: RuotaSettori["lato"]; z: number; passo: string; disegno: string };
+  /** Catena di trasporto letta dai documenti (metri chiesti in quantita). */
+  catena?: CatenaLetta;
+}
+
+/** Dati della catena di trasporto: dal manuale/distinta della macchina. */
+interface CatenaLetta {
+  maglia: string;
+  materiale: string;
+  /** Passo dell'attrezzatura (raschianti), in mm: es. P=426 = un raschiante ogni 3 maglie da 142. */
+  passoAttrezzatura: number | null;
+  raschiante: string;
+  disegno: string;
+}
+
+interface PezzoLetto {
+  descrizione?: string;
+  quantita?: number;
+  voci?: string[];
+  tipo?: string;
+  lato?: string;
+  z?: number | string;
+  passo?: number | string;
+  disegno?: string;
+  maglia?: string;
+  materiale?: string;
+  passoAttrezzatura?: number | string;
+  raschiante?: string;
 }
 
 interface LetturaMail {
@@ -33,10 +62,12 @@ interface LetturaMail {
   attenzione?: string;
   commessa?: string;
   matricola?: string;
+  /** Macchine vecchie: numero di matricola progressivo con l'anno (es. 2299/2000). */
+  sn?: string;
   rdo?: string;
   /** Modello della macchina Trasmec (dalla targhetta in foto o dal testo), es. TK40PNZV. */
   macchina?: string;
-  pezzi?: { descrizione?: string; quantita?: number; voci?: string[] }[];
+  pezzi?: PezzoLetto[];
 }
 
 /** Foto allegata alla mail (es. targhetta della macchina). */
@@ -210,17 +241,22 @@ export function immaginiDaEml(raw: string): ImmagineMail[] {
 
 /** Limite per allegato: i manuali da diversi MB non sono richieste d'offerta. */
 const MAX_ALLEGATO = 2 * 1024 * 1024;
+/** PDF scansionati (senza testo) che Claude legge come documenti: in tutto al massimo questi byte. */
+const MAX_SCANSIONI = 4 * 1024 * 1024;
 
 /**
  * Testo dei PDF allegati dal cliente. I PDF che sono offerte Trasmec (risposte già inviate)
- * non entrano mai nella generazione.
+ * non entrano mai nella generazione. I PDF senza testo (scansioni, es. la pagina del manuale
+ * con le correzioni a penna del cliente) passano a Claude come documenti da leggere.
  */
 async function testoAllegati(
   allegati: AllegatoMail[]
-): Promise<{ testo: string; usati: string[]; scartati: string[] }> {
+): Promise<{ testo: string; usati: string[]; scartati: string[]; scansioni: AllegatoMail[] }> {
   const parts: string[] = [];
   const usati: string[] = [];
   const scartati: string[] = [];
+  const scansioni: AllegatoMail[] = [];
+  let pesoScansioni = 0;
   for (const allegato of allegati.slice(0, 6)) {
     if (allegato.data.length > MAX_ALLEGATO) {
       scartati.push(`${allegato.name} (troppo grande)`);
@@ -243,13 +279,19 @@ async function testoAllegati(
       continue;
     }
     if (text.length < 20) {
-      scartati.push(`${allegato.name} (senza testo)`);
+      if (pesoScansioni + allegato.data.length <= MAX_SCANSIONI) {
+        pesoScansioni += allegato.data.length;
+        scansioni.push(allegato);
+        usati.push(`${allegato.name} (scansione)`);
+      } else {
+        scartati.push(`${allegato.name} (senza testo)`);
+      }
       continue;
     }
     usati.push(allegato.name);
     parts.push(`ALLEGATO ${allegato.name}\n${text.slice(0, 8000)}`);
   }
-  return { testo: parts.join("\n\n"), usati, scartati };
+  return { testo: parts.join("\n\n"), usati, scartati, scansioni };
 }
 
 function isBase64Line(line: string): boolean {
@@ -538,7 +580,8 @@ async function interpretMail(
   corpus: string,
   sections: DistintaSection[],
   distinta?: DistintaFile,
-  immagini: ImmagineMail[] = []
+  immagini: ImmagineMail[] = [],
+  documenti: { name: string; data: Uint8Array; trasmec: boolean }[] = []
 ): Promise<LetturaMail> {
   const enabled = sections.filter((section) => section.enabled).slice(0, 40);
   const ruote = (distinta?.ruoteSettori ?? []).map(
@@ -550,7 +593,7 @@ async function interpretMail(
   const text = await askClaude({
     system: `Sei l'ufficio ricambi Trasmec. Leggi la mail del cliente e capisci per quali pezzi va fatta l'offerta.
 Rispondi solo con JSON:
-{"cliente":"","indirizzo":[],"attenzione":"","commessa":"","matricola":"","macchina":"","rdo":"","pezzi":[{"descrizione":"","quantita":1,"voci":["titolo distinta"]}]}
+{"cliente":"","indirizzo":[],"attenzione":"","commessa":"","matricola":"","sn":"","macchina":"","rdo":"","pezzi":[{"descrizione":"","quantita":1,"voci":["titolo distinta"],"tipo":"settori|catena|altro","lato":"comando|rinvio","z":0,"passo":"","disegno":"","maglia":"","materiale":"","passoAttrezzatura":"","raschiante":""}]}
 Regole:
 - Un pezzo per ogni componente chiesto, con la quantità scritta dal cliente (es. "1 pc" = 1).
 - "voci" sono titoli ESATTI dell'elenco distinta, se presente. Esempio: screw flight / spira / elica = Spire. Se l'elenco manca, "voci" è [].
@@ -561,16 +604,33 @@ Regole:
 - cliente è il nome dell'azienda del cliente (es. dal dominio mail o dalla firma), non un reparto o una casella mail; attenzione è la persona che scrive. Mai Trasmec.
 - Se ci sono foto, cerca la targhetta Trasmec: macchina = MACHINE TYPE (es. TK40PNZV), matricola = SERIAL NUMBER (es. BC1438C-R007446). Trascrivi esattamente; se un carattere non si legge, lascia il campo vuoto. Senza targhetta, macchina è il modello Trasmec scritto nella mail (es. TK40, TM 75 CLC), se c'è.
 - Per ruote dentate / sprockets / settori scrivi nella descrizione anche i denti come "Z=10" se il cliente li indica.
-- rdo è il numero della richiesta d'offerta del cliente, solo se scritto (es. "RdO 4500123"). Mai il numero ticket.`,
+- rdo è il numero della richiesta d'offerta del cliente, solo se scritto (es. "RdO 4500123"). Mai il numero ticket.
+DOCUMENTI PDF (scansioni)
+- I documenti del CLIENTE (es. pagina "Identificazione" del manuale Trasmec) dicono cosa vuole: il cliente spesso evidenzia le righe dei pezzi e corregge a penna. Un valore barrato è sostituito da quello scritto a mano (es. quantità catena 101,2 barrata e "60 m" a mano = 60 metri); "2 X" a mano accanto a una ruota = 2 pezzi.
+- I documenti TRASMEC (distinta storica della commessa, disegni) servono solo a completare i dati tecnici dei pezzi chiesti (disegni, maglia, materiale, raschiante, passi): non aggiungono pezzi.
+- macchina = codice macchina come scritto (es. TK 30 HPDo, TK30"HPDo). matricola = commessa-disegno (es. AA1107C-R002386: commessa AA1107C, disegno/layout R002386; sulle targhette nuove SERIAL NUMBER BC1438C-R007446). commessa = solo la commessa (AA1107C). sn = numero di matricola progressivo con l'anno delle macchine vecchie (es. "2299/2000"), vuoto se non c'è.
+- tipo "settori" per ruote dentate / sprockets / ingranaggi a settori: lato comando (drive, traino, motrice) o rinvio (return, tail), z = denti, passo = passo catena in mm (es. 142), disegno = disegno della ruota (es. R001324). Un pezzo per lato.
+- tipo "catena" per la catena di trasporto / raschiante: quantita = metri chiesti, maglia (es. 14226), materiale della maglia (es. CN, MN), passoAttrezzatura = passo dei raschianti in mm (es. P=426 → 426), raschiante = baffo/catenaria (es. 760/100x10 R), disegno = disegno della catena (es. R001788ST).
+- Campi tecnici che non trovi: stringa vuota. Non inventarli.`,
     prompt: `MAIL
 ${corpus.slice(0, 14000)}
 
 VOCI DISTINTA ATTIVE
-${catalog}${immagini.length ? `\n\nFOTO ALLEGATE: ${immagini.map((image) => image.name).join(", ")}` : ""}`,
-    maxTokens: 1500,
+${catalog}${immagini.length ? `\n\nFOTO ALLEGATE: ${immagini.map((image) => image.name).join(", ")}` : ""}${
+      documenti.length
+        ? `\n\nDOCUMENTI PDF ALLEGATI (in ordine): ${documenti
+            .map((doc) => `${doc.name} (${doc.trasmec ? "documento TRASMEC" : "allegato del CLIENTE"})`)
+            .join("; ")}`
+        : ""
+    }`,
+    maxTokens: 2500,
     images: immagini.map((image) => ({
       data: image.data,
       mediaType: image.type === "image/png" ? "image/png" : "image/jpeg",
+    })),
+    documents: documenti.map((doc) => ({
+      data: doc.data,
+      title: `${doc.trasmec ? "TRASMEC" : "CLIENTE"} - ${doc.name}`,
     })),
   });
   return extractJson(text);
@@ -626,6 +686,8 @@ function pushLine(
     /** Prezzo già calcolato (kit); se manca si cerca l'articolo a listino. */
     prezzo?: number | null;
     sconto?: number | null;
+    /** Unità di misura (default NR; la catena va a metri). */
+    um?: string;
   },
   prezzi: Prezzi
 ) {
@@ -644,7 +706,7 @@ function pushLine(
     articolo: line.articolo,
     descrizione: line.descrizione,
     disegno: line.disegno,
-    um: "NR",
+    um: line.um ?? "NR",
     qty: line.qty,
     prezzo: priced.prezzo,
     sconto: priced.sconto,
@@ -769,13 +831,92 @@ function richiestaOfferta(rdo: string, ticket: string, subject: string): string 
     prima = oggetto;
     oggetto = oggetto.replace(/^\s*(?:(?:fwd?|fw|re|r|i|aw|wg|tr|rif)\s*:|\{\d+\}\s*:?|\[[^\]]*\]\s*:?)\s*/i, "");
   }
+  // "PRICE OFFER REQUEST-TRASMEC": il nome del fornitore non fa parte della richiesta.
+  oggetto = oggetto.replace(/\s*[-–:]?\s*\bTRASMEC\b\s*$/i, "").replace(/^\s*\bTRASMEC\b\s*[-–:]?\s*/i, "");
   return oggetto.trim() || numero;
 }
 
-/** Modello di trasportatore Trasmec scritto nella mail (es. "TK40 conveyor", "TK 40 PNZ"). */
+/** Modello di trasportatore Trasmec scritto nella mail (es. "TK40 conveyor", "TK 40 PNZ", 'TK30"HPDo' → TK30HP). */
 function modelloNelTesto(text: string): string {
-  const match = text.match(/\bT[KC]K?\s*(\d{2})\s*(PNZ\s*V?|HP|N)?\b/i);
+  const match = text.match(/\bT[KC]K?\s*(\d{2})\s*["”]?\s*(PNZ\s*V?|HP|N(?![A-Za-z]))?/i);
   return match ? `TK${match[1]}${(match[2] ?? "").replace(/\s+/g, "")}`.toUpperCase() : "";
+}
+
+function testo(value: unknown): string {
+  return typeof value === "string" || typeof value === "number" ? String(value).trim() : "";
+}
+
+/** Numero da "426", "P=426", "142 mm". */
+function numero(value: unknown): number | null {
+  const match = testo(value).match(/\d+(?:[.,]\d+)?/);
+  return match ? Number(match[0].replace(",", ".")) : null;
+}
+
+/** Pezzo letto da Claude → riga richiesta, con i dati strutturati di ruote e catena. */
+function richiestaDaPezzo(pezzo: PezzoLetto): RichiestaRiga {
+  const riga: RichiestaRiga = {
+    componente: (pezzo.descrizione ?? "").trim(),
+    quantita: typeof pezzo.quantita === "number" && pezzo.quantita > 0 ? pezzo.quantita : 1,
+    voci: (pezzo.voci ?? []).map((voce) => voce.trim()).filter(Boolean),
+  };
+  const tipo = testo(pezzo.tipo).toLowerCase();
+  const z = numero(pezzo.z);
+  const lato = testo(pezzo.lato).toLowerCase();
+  if (tipo === "settori" && z && /^(comando|rinvio)$/.test(lato)) {
+    riga.ruota = {
+      lato: lato as RuotaSettori["lato"],
+      z,
+      passo: String(numero(pezzo.passo) ?? "").replace(/\.0+$/, ""),
+      disegno: testo(pezzo.disegno).toUpperCase(),
+    };
+  }
+  if (tipo === "catena") {
+    riga.catena = {
+      maglia: testo(pezzo.maglia).replace(/\s+/g, ""),
+      materiale: testo(pezzo.materiale).toUpperCase(),
+      passoAttrezzatura: numero(pezzo.passoAttrezzatura),
+      raschiante: testo(pezzo.raschiante),
+      disegno: testo(pezzo.disegno),
+    };
+  }
+  return riga;
+}
+
+/**
+ * Catena di trasporto a metri: codice = disegno della catena a listino (R001788 → R001788ST, la
+ * catena completa), descrizione da modello, maglia, passo raschianti e baffo; i metri chiesti
+ * si arrotondano per eccesso a un numero intero di passi dei raschianti (60 m con P=426 → 60,066 m).
+ */
+function rigaCatena(
+  catena: CatenaLetta,
+  metri: number | null,
+  modello: string,
+  lingua: Lingua,
+  avvisi: string[]
+): { articolo: string; descrizione: string; disegno: string; qty: number | null } {
+  const disegno = catena.disegno.trim();
+  const base = disegno.toUpperCase().replace(/ST$/, "");
+  const articolo =
+    [disegno.toUpperCase(), `${base}ST`, base].find((code) => code && priceArticle(code).unitPrice > 0) ??
+    disegno.toUpperCase();
+  const passoMaglia = Number(catena.maglia.match(/^(\d{3})\d{2}/)?.[1] ?? 0);
+  const passo = catena.passoAttrezzatura || passoMaglia;
+  let qty = metri;
+  if (metri && passo) {
+    qty = Math.round(Math.ceil((metri * 1000) / passo - 1e-9) * passo) / 1000;
+    if (qty !== metri) {
+      avvisi.push(
+        `Catena: ${metri} m chiesti → ${qty.toLocaleString("it-IT")} m, multiplo del passo ${catena.passoAttrezzatura ? "dei raschianti" : "maglia"} di ${passo} mm.`
+      );
+    }
+  }
+  const raschiante = catena.raschiante.toUpperCase().replace(/\s+/g, " ").replace(/\s+([A-Z])$/, "-$1");
+  const maglia = `${catena.maglia}${catena.materiale}`;
+  const parti =
+    lingua === "en"
+      ? ["COMPLETE CHAIN", modello && `FOR ${modello}`, maglia && `LINK ${maglia}`, catena.passoAttrezzatura && `P=${catena.passoAttrezzatura}`, raschiante && `SCRAPER ${raschiante}`]
+      : ["CATENA COMPLETA", modello && `PER ${modello}`, maglia && `MAGLIA ${maglia}`, catena.passoAttrezzatura && `P=${catena.passoAttrezzatura}`, raschiante && `RASCHIANTE ${raschiante}`];
+  return { articolo, descrizione: parti.filter(Boolean).join(" "), disegno, qty };
 }
 
 /**
@@ -783,6 +924,7 @@ function modelloNelTesto(text: string): string {
  * drive/comando o return/rinvio (entrambi i lati se non è detto). Settori sconosciuti (0).
  */
 function ruoteDaTesto(richiesta: RichiestaRiga): RuotaSettori[] {
+  if (richiesta.ruota) return [{ lato: richiesta.ruota.lato, z: richiesta.ruota.z, settori: 0 }];
   const text = norm(richiesta.componente);
   if (!/settor|sector|sprocket|ruot[ae] dentat|ruota portasettori|ingranagg/.test(text)) return [];
   const z = Number(
@@ -841,13 +983,14 @@ function pushKit(
     { articolo: kit.code, descrizione: inLingua(kit.descrizione, prezzi.lingua), disegno: "", qty, prezzo, sconto },
     prezzi
   );
+  // Le sottorighe riportano il totale per i kit offerti (2 kit da 4 settori → 8 settori).
   kit.componenti.forEach((comp, index) => {
     pushLine(
       righe,
       group,
       index + 1,
       giorni,
-      { articolo: comp.code, descrizione: inLingua(comp.descrizione, prezzi.lingua), disegno: comp.disegno, qty: comp.qty },
+      { articolo: comp.code, descrizione: inLingua(comp.descrizione, prezzi.lingua), disegno: comp.disegno, qty: comp.qty * qty },
       prezzi
     );
   });
@@ -957,6 +1100,16 @@ export async function buildOffertaCliente(input: {
     ...codesIn(corpus),
   ].filter(Boolean);
   const caricati = sourceFromUpload(input.sorgenti ?? []);
+  // PDF tra i file sorgente (es. distinta storica scansionata di una matricola vecchia):
+  // Claude li legge per completare i dati tecnici dei pezzi chiesti.
+  const documentiTrasmec: { name: string; data: Uint8Array; trasmec: boolean }[] = [];
+  let pesoDocumenti = allegati.scansioni.reduce((sum, doc) => sum + doc.data.length, 0);
+  for (const file of input.sorgenti ?? []) {
+    if (!file.data || !/\.pdf$/i.test(file.name)) continue;
+    if (pesoDocumenti + file.data.length > MAX_SCANSIONI) continue;
+    pesoDocumenti += file.data.length;
+    documentiTrasmec.push({ name: file.name, data: new Uint8Array(file.data), trasmec: true });
+  }
   const prelim = caricati ?? findSource(baseNeedles);
 
   let lettura: LetturaMail | null = null;
@@ -965,19 +1118,18 @@ export async function buildOffertaCliente(input: {
     try {
       if (!isApiKeyConfigured()) throw new Error("API key mancante");
       const immagini = [...(input.immagini ?? []), ...(input.emailRaw ? immaginiDaEml(input.emailRaw) : [])].slice(0, 3);
-      lettura = await interpretMail(corpus, prelim?.distinte[0]?.sections ?? [], prelim?.distinte[0], immagini);
+      lettura = await interpretMail(corpus, prelim?.distinte[0]?.sections ?? [], prelim?.distinte[0], immagini, [
+        ...allegati.scansioni.map((doc) => ({ ...doc, trasmec: false })),
+        ...documentiTrasmec,
+      ]);
     } catch (err) {
       claudeError = err instanceof Error ? err.message : String(err);
     }
   }
 
   const daClaude: RichiestaRiga[] = (lettura?.pezzi ?? [])
-    .map((pezzo) => ({
-      componente: (pezzo.descrizione ?? "").trim(),
-      quantita: typeof pezzo.quantita === "number" && pezzo.quantita > 0 ? pezzo.quantita : 1,
-      voci: (pezzo.voci ?? []).map((voce) => voce.trim()).filter(Boolean),
-    }))
-    .filter((row) => row.componente || row.voci?.length);
+    .map(richiestaDaPezzo)
+    .filter((row) => row.componente || row.voci?.length || row.ruota || row.catena);
   const richieste = manual.length ? manual : daClaude.length ? daClaude : emailLines(corpus);
 
   const needles = [
@@ -992,6 +1144,9 @@ export async function buildOffertaCliente(input: {
   if (lettura) avvisi.push("Pezzi individuati da Claude nella mail.");
   if (allegati.usati.length) avvisi.push(`Letti gli allegati: ${allegati.usati.join(", ")}.`);
   if (allegati.scartati.length) avvisi.push(`Allegati non usati: ${allegati.scartati.join(", ")}.`);
+  if (documentiTrasmec.length && lettura) {
+    avvisi.push(`Dati tecnici completati dai documenti Trasmec: ${documentiTrasmec.map((doc) => doc.name).join(", ")}.`);
+  }
   if (claudeError) avvisi.push(`Claude non ha letto la mail: ${claudeError}`);
   const fonti = hit ? hit.files.map((file) => path.basename(file)) : [];
 
@@ -1027,7 +1182,8 @@ export async function buildOffertaCliente(input: {
     const daTesto = !ruote.length && !distinta?.ruoteSettori?.length ? ruoteDaTesto(richiesta) : [];
     if (ruote.length || daTesto.length) {
       for (const ruota of ruote.length ? ruote : daTesto) {
-        const passo = distinta?.passoCatena || passoPerRuota(ruota, modelloMacchina, richiesta.componente);
+        const passo =
+          distinta?.passoCatena || richiesta.ruota?.passo || passoPerRuota(ruota, modelloMacchina, richiesta.componente);
         const kit = kitPerRuota(ruota, passo);
         if (!kit) {
           avvisi.push(
@@ -1035,8 +1191,15 @@ export async function buildOffertaCliente(input: {
           );
           continue;
         }
-        if (!distinta?.passoCatena && modelloMacchina) {
+        if (!distinta?.passoCatena && !richiesta.ruota?.passo && modelloMacchina) {
           avvisi.push(`Kit settori lato ${ruota.lato}: passo P${passo} dal modello ${modelloMacchina} (foglio Maglie Attrezzate).`);
+        }
+        // Settori con la foratura della macchina: il disegno della ruota nei documenti
+        // (es. R001324) prevale sul disegno standard del settore.
+        const disegnoRuota = richiesta.ruota?.disegno;
+        if (disegnoRuota && kit.componenti[0]) {
+          kit.componenti[0] = { ...kit.componenti[0], disegno: disegnoRuota };
+          avvisi.push(`Settori lato ${ruota.lato}: disegno ${disegnoRuota} della ruota della macchina (foratura specifica).`);
         }
         // Senza distinta non si sa quanti settori ha la ruota: un kit per ruota richiesta.
         const kits = ruota.settori
@@ -1045,6 +1208,14 @@ export async function buildOffertaCliente(input: {
         pushKit(righe, group, giorni, kit, kits, prezzi);
         group += 1;
       }
+      continue;
+    }
+
+    // Catena di trasporto senza distinta Excel: dai dati letti su manuale e distinta storica.
+    if (richiesta.catena && !distinta && (richiesta.catena.disegno || richiesta.catena.maglia)) {
+      const riga = rigaCatena(richiesta.catena, richiesta.quantita, modelloNelTesto(modelloMacchina), lingua, avvisi);
+      pushLine(righe, group, null, giorni, { ...riga, um: "MT" }, prezzi);
+      group += 1;
       continue;
     }
 
@@ -1134,10 +1305,12 @@ export async function buildOffertaCliente(input: {
   }
 
   const meta = distinta?.meta;
-  const macchina = meta?.macchina || lettura?.macchina?.trim().toUpperCase() || "";
+  const macchina = meta?.macchina || lettura?.macchina?.trim() || "";
   const matricola =
     meta?.matricola || lettura?.matricola || input.commessa || matricole[0] || "";
-  const intro = [macchina ? `SPARE PARTS FOR ${macchina}` : "SPARE PARTS", matricola]
+  // Macchine vecchie: dopo commessa-disegno il numero di matricola con l'anno (SN. 2299/2000).
+  const sn = lettura?.sn?.trim() ?? "";
+  const intro = [macchina ? `SPARE PARTS FOR ${macchina}` : "SPARE PARTS", [matricola, sn && `SN. ${sn}`].filter(Boolean).join(" ")]
     .filter(Boolean)
     .join("\n");
 
@@ -1148,7 +1321,7 @@ export async function buildOffertaCliente(input: {
     numero: ticket ? `BOZZA ${ticket}` : "BOZZA",
     data: formatDate(now),
     validita: formatDate(valid),
-    clienteNome: lettura?.cliente || party.nome || meta?.cliente || aziendaDaDominio(email.text),
+    clienteNome: (lettura?.cliente || party.nome || meta?.cliente || aziendaDaDominio(email.text)).toUpperCase(),
     clienteIndirizzo: lettura?.indirizzo?.filter(Boolean).length
       ? (lettura.indirizzo ?? []).filter(Boolean)
       : party.indirizzo,

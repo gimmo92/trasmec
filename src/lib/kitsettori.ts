@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import * as XLSX from "xlsx";
 import { listDocumenti, resolveDocumento } from "./documenti";
-import { priceArticle } from "./ypri";
+import { codiciListino, priceArticle } from "./ypri";
 import type { RuotaSettori } from "./sorgente";
 
 /**
@@ -283,6 +283,42 @@ export function passiKit(lato: RuotaSettori["lato"], z: number): string[] {
 }
 
 /**
+ * Ruote e passo coperti da un kit bulloneria, letti dal codice:
+ * KB-Z10/R10-P260 → Z10, R10, 260; KB-Z12-Z14-P142 → Z12, Z14, 142; KB-R8/Z8/R12/R14-142 → …, 142.
+ */
+function specKb(code: string): { ruote: string[]; passo: string } | null {
+  const body = code.toUpperCase().replace(/^KB-/, "");
+  const passo = body.match(/-P?(\d{3})$/)?.[1];
+  if (!passo) return null;
+  const ruote = [...body.slice(0, body.length - passo.length).matchAll(/([ZR])0*(\d{1,2})\b/g)].map(
+    (match) => `${match[1]}${match[2]}`
+  );
+  return ruote.length ? { ruote, passo } : null;
+}
+
+/** "Z=12/Z=14 P=142" dal codice del kit bulloneria. */
+function ruoteDelKb(code: string): string {
+  const spec = specKb(code);
+  if (!spec) return code.replace(/^KB-/, "");
+  return `${spec.ruote.map((ruota) => `${ruota[0]}=${ruota.slice(1)}`).join("/")} P=${spec.passo}`;
+}
+
+/**
+ * Kit bulloneria a listino per una ruota: il codice KB-… che nomina quel lato e quei denti
+ * con quel passo (lo stesso kit spesso vale per più ruote, es. KB-Z12-Z14-P142).
+ */
+function kitBulloneria(lato: "Z" | "R", z: number, passo: string): string {
+  const ruota = `${lato}${z}`;
+  const candidati = codiciListino("KB-").filter((code) => {
+    const spec = specKb(code);
+    return spec?.passo === passo && spec.ruote.includes(ruota);
+  });
+  // A parità, il kit più specifico (meno ruote nel codice).
+  candidati.sort((a, b) => (specKb(a)?.ruote.length ?? 0) - (specKb(b)?.ruote.length ?? 0) || a.localeCompare(b));
+  return candidati.find(inListino) ?? "";
+}
+
+/**
  * Kit settori per una ruota della distinta: KIT-SET-{Z|R}{z}-P{passo}.
  * Componenti: il settore verniciato SETTORE-{Z|R}{z}-P{passo}-V se è a listino (altrimenti quello
  * del foglio KIT SETTORI) e il kit bulloneria KB-… se è a listino (altrimenti viti, rondelle e dadi del foglio).
@@ -314,19 +350,11 @@ export function kitPerRuota(ruota: RuotaSettori, passo: string): KitSettori | nu
     },
   ];
 
-  const zz = String(ruota.z);
-  const kitBulloni = [
-    `KB-Z${zz}/R${zz}-P${passo}`,
-    `KB-Z${z}/R${z}-P${passo}`,
-    `KB-${lato}${zz}-P${passo}`,
-    `KB-${lato}${z}-P${passo}`,
-  ].find(inListino);
+  const kitBulloni = kitBulloneria(lato, ruota.z, passo);
   if (kitBulloni) {
     componenti.push({
       code: kitBulloni,
-      descrizione:
-        descrizioneListino(kitBulloni) ||
-        `KIT BULLONERIA FISSAGGIO SETTORI ${kitBulloni.replace(/^KB-/, "").replace(/-P(\d+)$/, " P=$1").replace(/([ZR])(\d+)/g, "$1=$2")}`,
+      descrizione: descrizioneListino(kitBulloni) || `KIT BULLONERIA FISSAGGIO SETTORI ${ruoteDelKb(kitBulloni)}`,
       qty: 1,
       disegno: disegnoDi(cat, kitBulloni),
     });
