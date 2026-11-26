@@ -88,7 +88,9 @@ export default function IstruzioniPersonalizzate() {
             valgono alla prossima generazione. Se scrivi di mettere fac simile in
             cima, compare in anteprima e in export. Le altre indicazioni le
             applica Claude a codici e descrizioni dei pezzi (es. «per il
-            supporto C003369 usa il codice C003369-X»). Le regole che richiedono
+            supporto C003369 usa il codice C003369-X»). Puoi anche togliere
+            colonne dall&apos;export Excel (es. «esporta senza le colonne project e
+            description»): vale subito, senza rigenerare. Le regole che richiedono
             di leggere un file vanno chieste come modifica all&apos;app.
           </p>
         </div>

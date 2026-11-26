@@ -9,6 +9,8 @@ import { prepareApp } from "@/lib/prepare";
 import { classifyComponent } from "@/lib/spareclass";
 import { machineLabel, offerUnit, projectLabel } from "@/lib/machinelabel";
 import { applyPriceToLine } from "@/lib/ypri";
+import { getIstruzioni, hydrateIstruzioni } from "@/lib/istruzioni";
+import { EXPORT_COLUMNS, colonneDaNascondere, type ExportColumn } from "@/lib/exportcolumns";
 
 export const runtime = "nodejs";
 
@@ -198,7 +200,36 @@ async function buildOfferWorkbook(offer: Offer): Promise<ExcelJS.Buffer> {
   ws.getCell("V9").value =
     lastDataRow >= 13 ? { formula: `SUM(V13:V${lastDataRow})` } : 0;
 
+  await nascondiColonne(ws, offer);
+
   return wb.xlsx.writeBuffer();
+}
+
+/** Toglie dall'Excel le colonne che le istruzioni personalizzate chiedono di non esportare. */
+async function nascondiColonne(ws: ExcelJS.Worksheet, offer: Offer) {
+  let istruzioni = typeof offer.meta?.istruzioni === "string" ? offer.meta.istruzioni : "";
+  try {
+    await hydrateIstruzioni();
+    istruzioni = getIstruzioni();
+  } catch {
+    // restano quelle salvate nell'offerta
+  }
+  const togli = await colonneDaNascondere(istruzioni).catch((): ExportColumn[] => []);
+  const cols = new Set<number>(togli.flatMap((key) => [...EXPORT_COLUMNS[key].cols]));
+  for (const col of cols) ws.getColumn(col).hidden = true;
+  // CUSTUMER: e NOTE: stanno in G: se G sparisce, le etichette passano nella prima colonna visibile a sinistra.
+  if (cols.has(7)) {
+    let target = 6;
+    while (target > 5 && cols.has(target)) target--;
+    for (const r of [7, 8]) {
+      const from = ws.getCell(r, 7);
+      const to = ws.getCell(r, target);
+      to.value = from.value;
+      to.style = JSON.parse(JSON.stringify(from.style ?? {}));
+      to.alignment = { ...(to.alignment ?? {}), horizontal: "right" };
+      from.value = null;
+    }
+  }
 }
 
 export async function POST(req: NextRequest) {
