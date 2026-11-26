@@ -2,7 +2,6 @@ import path from "node:path";
 import { leggiMsg, MAX_MAIL_BODY } from "./msgmail";
 import { askClaude, isApiKeyConfigured } from "./anthropic";
 import { assiemeDaListino, kitPerRuota, passiKit, passoDaModello, type KitComponente } from "./kitsettori";
-import { getIstruzioni } from "./istruzioni";
 import { extractPdfTextFromBuffer } from "./orderpdf";
 import type { DistintaComponent, DistintaFile, DistintaSection, RuotaSettori, SourceHit } from "./sorgente";
 import { findSource, sourceFromUpload, type SorgenteCaricato } from "./sorgente";
@@ -1315,7 +1314,6 @@ export async function buildOffertaCliente(input: {
     .join("\n");
 
   await traduciDescrizioni(righe, lingua, avvisi);
-  await applicaIstruzioni(righe, avvisi, prezzi);
 
   return {
     numero: ticket ? `BOZZA ${ticket}` : "BOZZA",
@@ -1339,75 +1337,6 @@ export async function buildOffertaCliente(input: {
     avvisi,
     fonti,
   };
-}
-
-/**
- * Istruzioni personalizzate (tab "Personalizza istruzioni"): Claude le applica a codici,
- * descrizioni e disegni delle righe già composte. Quantità e prezzi non li tocca; se un codice
- * cambia, il prezzo si ricalcola dal listino. Ogni modifica finisce negli avvisi.
- */
-async function applicaIstruzioni(righe: OffertaRiga[], avvisi: string[], prezzi: Prezzi): Promise<void> {
-  const regole = getIstruzioni().trim();
-  if (!regole || !righe.length || !isApiKeyConfigured()) return;
-  let risposta: string;
-  try {
-    risposta = await askClaude({
-      system: `Sei l'ufficio ricambi Trasmec. Applichi le ISTRUZIONI DELL'OPERATORE alle righe di un'offerta ricambi.
-Rispondi solo con JSON: {"righe":[{"pos":"01","articolo":"...","descrizione":"...","disegno":"..."}]}
-Regole:
-- Includi solo le righe che cambiano; [] se nessuna istruzione riguarda queste righe.
-- Cambia articolo, descrizione o disegno solo come dicono le istruzioni. Non inventare codici: se un'istruzione richiede dati che non hai, non cambiare niente.
-- Descrizioni in ${prezzi.lingua === "en" ? "inglese" : "italiano"}, maiuscole, come nell'offerta.
-- Non aggiungere né togliere righe.`,
-      prompt: `ISTRUZIONI DELL'OPERATORE
-${regole}
-
-RIGHE
-${JSON.stringify(righe.map(({ pos, articolo, descrizione, disegno }) => ({ pos, articolo, descrizione, disegno })))}`,
-      maxTokens: 3000,
-    });
-  } catch (err) {
-    avvisi.push(`Istruzioni personalizzate non applicate: ${err instanceof Error ? err.message : String(err)}`);
-    return;
-  }
-  let cambi: unknown[] = [];
-  try {
-    const data = jsonObject(risposta);
-    cambi = Array.isArray(data.righe) ? data.righe : [];
-  } catch {
-    avvisi.push("Istruzioni personalizzate non applicate: risposta non valida.");
-    return;
-  }
-  const fatti: string[] = [];
-  for (const raw of cambi) {
-    if (!raw || typeof raw !== "object") continue;
-    const item = raw as Record<string, unknown>;
-    const riga = righe.find((row) => row.pos === String(item.pos ?? ""));
-    if (!riga) continue;
-    const articolo = typeof item.articolo === "string" ? item.articolo.trim() : riga.articolo;
-    const descrizione = typeof item.descrizione === "string" ? item.descrizione.trim() : riga.descrizione;
-    const disegno = typeof item.disegno === "string" ? item.disegno.trim() : riga.disegno;
-    const parti: string[] = [];
-    if (articolo && articolo !== riga.articolo) {
-      parti.push(`codice ${riga.articolo || "—"} → ${articolo}`);
-      riga.articolo = articolo;
-      if (!riga.pos.includes(".")) {
-        const nuovo = prezzoListino(articolo, prezzi);
-        riga.prezzo = nuovo.prezzo;
-        riga.sconto = nuovo.sconto;
-      }
-    }
-    if (descrizione && descrizione !== riga.descrizione) {
-      parti.push("descrizione");
-      riga.descrizione = descrizione;
-    }
-    if (disegno !== riga.disegno) {
-      parti.push(`disegno → ${disegno || "—"}`);
-      riga.disegno = disegno;
-    }
-    if (parti.length) fatti.push(`${riga.pos}: ${parti.join(", ")}`);
-  }
-  if (fatti.length) avvisi.push(`Istruzioni personalizzate applicate — ${fatti.join("; ")}.`);
 }
 
 function jsonObject(text: string): Record<string, unknown> {
