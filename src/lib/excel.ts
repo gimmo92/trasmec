@@ -1183,10 +1183,65 @@ export function extractAllBomRows(grids: Record<string, Grid>): {
     if (res.rows.length) return { ...res, sheetUsed: name };
   }
   if (grids["1"]) return extractConfigBom(grids);
+  const pagine = extractDistintaPagine(grids);
+  if (pagine) return pagine;
   return {
     rows: [],
     warnings: [
       "Nessun foglio con tabella 'Part Number': ricambi non estraibili da questa distinta.",
     ],
   };
+}
+
+/**
+ * Distinte a pagine dei nastri TN/TB (fogli "Distinta Pag1", "Distinta Pag2"…): tante piccole
+ * tabelle, ognuna con un'intestazione "Qty | Drw n° | Description" sotto il titolo della sezione
+ * (Rollers, Components of the drive station…). Ogni riga sotto un'intestazione è un pezzo:
+ * codice dalla colonna disegno, quantità dalla colonna Qty, descrizione dal nome della riga e
+ * dalla colonna Description. Il filtro ricambi resta a sigle e indici.
+ */
+function extractDistintaPagine(grids: Record<string, Grid>): {
+  rows: BomRow[];
+  warnings: string[];
+  sheetUsed: string;
+} | null {
+  const sheets = Object.keys(grids).filter((name) => /^distinta\s*pag/i.test(name.trim()));
+  if (!sheets.length) return null;
+  const rows: BomRow[] = [];
+  for (const name of sheets) {
+    const grid = grids[name];
+    let cols: { qty: number; code: number } | null = null;
+    for (const row of grid) {
+      const cells = row.map(norm);
+      const qty = cells.findIndex((cell) => /^(qty|q\.?\s*t[yaà]|quant\.?)$/.test(cell));
+      const code = cells.findIndex((cell) => /^(drw|dwg|drawing)\b/.test(cell));
+      if (qty >= 0 && code >= 0) {
+        cols = { qty, code };
+        continue;
+      }
+      if (!cols) continue;
+      const filled = row.map(cellStr);
+      if (!filled.some(Boolean)) {
+        cols = null;
+        continue;
+      }
+      const pn = filled[cols.code] ?? "";
+      if (!/^[A-Z]{1,4}\d{3,}[A-Z0-9-]*$/i.test(pn)) continue;
+      const qtyCell = filled[cols.qty] ?? "";
+      const qtyCol = cols.qty;
+      const nome = filled.slice(0, cols.code).filter((cell, index) => cell && index !== qtyCol).join(" ");
+      // Dopo il codice: modello del pezzo (FNL522B, PSV/1 20R12 108NL), anche senza colonna Description.
+      const dopo = filled.slice(cols.code + 1).filter(Boolean).join(" ");
+      const metri = /\bmeters?\b|\bmetri\b/i.test(dopo);
+      const extra = dopo.replace(/\b(meters?|metri)\b/gi, "").replace(/\s+/g, " ").trim();
+      rows.push({
+        partNumber: pn.toUpperCase(),
+        descriptionEN: [nome, extra].filter(Boolean).join(" ") || undefined,
+        qty: parseNum(qtyCell) ?? qtyCell,
+        um: metri ? "MT" : undefined,
+      });
+    }
+  }
+  if (!rows.length) return null;
+  return { rows, warnings: [], sheetUsed: sheets.join(", ") };
 }
